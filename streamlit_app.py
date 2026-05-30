@@ -1,27 +1,33 @@
+"""
+K-평균 군집화를 활용한 수학 학습자 유형 분석
+Streamlit Web App
+"""
 import streamlit as st
 import pandas as pd
 import numpy as np
+import io
+import warnings
+warnings.filterwarnings("ignore")
+
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import warnings
-warnings.filterwarnings("ignore")
 
-# ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # 페이지 설정
-# ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 st.set_page_config(
     page_title="수학 학습자 유형 분석",
-    page_icon="📊",
+    page_icon="📐",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# ══════════════════════════════════════════════════════════
-# 전역 상수
-# ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
+# 상수 정의
+# ══════════════════════════════════════════
 FACTOR_ITEMS = {
     "math_anxiety_mean": [
         "A1. 수학 시간에 어려운 문제가 나오면 긴장된다.",
@@ -59,7 +65,7 @@ FACTOR_ITEMS = {
         "T3. 모르는 수학 문제가 있으면 질문하거나 찾아보는 편이다.",
         "T4. 수학 공부를 할 때 집중이 잘 되는 편이다.",
         "T5. 수학 수업에서 친구들과 함께 문제를 해결하는 것이 도움이 된다.",
-        "T6. 수학을 포기하고 싶다고 느낄 때가 있다.",
+        "T6. 수학을 포기하고 싶다고 느낄 때가 있다.",  # 역채점
     ],
 }
 NEGATIVE_ITEM = "T6. 수학을 포기하고 싶다고 느낄 때가 있다."
@@ -70,167 +76,235 @@ FACTOR_LABELS = {
     "math_interest_mean":      "수학흥미",
     "learning_attitude_mean":  "학습태도",
 }
-FACTOR_BADGE = {
-    "math_anxiety_mean":       ("A", "#E03131", "#fff0f0"),
-    "math_self_efficacy_mean": ("E", "#1B64DA", "#eef3fd"),
-    "math_interest_mean":      ("I", "#0D9E75", "#e6f7f1"),
-    "learning_attitude_mean":  ("T", "#C47D0E", "#fff8e6"),
+
+# 따뜻한 색상 팔레트
+C_COLORS = ["#E07B54", "#5B8DB8", "#6BAA75"]   # 테라코타·스틸블루·세이지
+C_NAMES  = ["취약형", "중간형", "강점형"]
+C_DESCS  = [
+    "수학불안이 높고 자기효능감·흥미·학습태도가 낮은 집단 — 심리적 지원과 기초 강화가 필요합니다.",
+    "모든 요인이 평균 수준인 집단 — 동기 유발과 개인별 잠재력 발견이 중요합니다.",
+    "수학불안이 낮고 자기효능감·흥미·학습태도가 높은 집단 — 심화 도전 기회를 제공합니다.",
+]
+STRATEGIES = [
+    {
+        "title": "심리 안정 + 기초 강화",
+        "items": [
+            "경쟁보다 협력 분위기 조성, 실수 허용 문화 정착",
+            "개별화 피드백으로 작은 성취도 칭찬·격려",
+            "수학 불안 관리 전략 교육 (심호흡, 긍정적 자기 대화)",
+            "쉬운 문제부터 단계적 난이도 향상, 성공 경험 누적",
+            "놀이·게임·실생활 연계로 수학에 대한 흥미 유발",
+        ],
+    },
+    {
+        "title": "동기 유발 + 잠재력 발굴",
+        "items": [
+            "학습 스타일·선호도 파악 후 맞춤 경험 제공",
+            "수학-실생활 연결로 학습 의미 탐색",
+            "토론·발표 기회 확대로 참여 의욕 높이기",
+            "또래 멘토링·소그룹으로 편안한 학습 환경 조성",
+            "학습 일지·면담으로 자기 성찰 기회 제공",
+        ],
+    },
+    {
+        "title": "심화 도전 + 창의적 확장",
+        "items": [
+            "현 수준을 넘는 심화 문제·탐구 과제 제공",
+            "경시 대회·동아리·멘토링 참여 기회 연결",
+            "자기 주도 학습 목표 설정 및 실행 독려",
+            "다양한 풀이 전략 탐색, 비판적 사고 훈련",
+            "동료 설명·리더십 역할로 깊은 이해 도모",
+        ],
+    },
+]
+
+FACTOR_META = {
+    "math_anxiety_mean":       ("A", "#E07B54", "#fdf2ee"),
+    "math_self_efficacy_mean": ("E", "#5B8DB8", "#eef3f9"),
+    "math_interest_mean":      ("I", "#6BAA75", "#eef6f0"),
+    "learning_attitude_mean":  ("T", "#B8975B", "#f9f5ee"),
 }
 
-CLUSTER_COLORS = ["#E03131", "#0D9E75", "#C47D0E"]
-CLUSTER_NAMES  = ["취약형", "우수형", "보통형"]
-CLUSTER_DESCS  = [
-    "수학불안이 매우 높고 자기효능감·흥미·학습태도가 전반적으로 낮은 집단",
-    "수학불안이 낮고 자기효능감·흥미·학습태도가 모두 평균 이상인 집단",
-    "모든 요인이 평균에 근접한 중간 집단",
-]
-STRATEGY_ITEMS = [
-    [
-        "협력 분위기 조성, 실수 허용 문화 정착",
-        "개별화 피드백으로 작은 성취도 칭찬·격려",
-        "수학 불안 관리 전략 교육 (긍정적 자기 대화)",
-        "쉬운 문제부터 단계적 난이도 향상 경험",
-        "놀이·게임·실생활 연계로 흥미 유발",
-        "탐구 활동으로 수학의 유용성 직접 발견",
-    ],
-    [
-        "현 수준 초과 심화 문제·탐구 과제 제공",
-        "수학 경시대회·동아리·멘토링 기회 연결",
-        "자기 주도 학습 목표 설정 및 실행 독려",
-        "다양한 풀이 전략 탐색·비판적 사고 훈련",
-        "생성형 AI 활용 수학적 아이디어 발전",
-        "동료 설명·리더십 역할로 깊은 이해 도모",
-    ],
-    [
-        "학습 스타일·선호도 파악 후 맞춤 경험 제공",
-        "수학-실생활 연결로 학습 의미 탐색",
-        "토론·발표 기회 확대로 적극성 북돋기",
-        "또래 멘토링·소그룹으로 편안한 환경 조성",
-        "학습 일지·면담으로 자기 성찰 지원",
-        "작은 성공 경험 축적으로 자기효능감 증진",
-    ],
-]
-
-# ══════════════════════════════════════════════════════════
-# CSS
-# ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
+# CSS  (따뜻하고 심플한 톤)
+# ══════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
 
-.stApp { background:#f7f8fa; font-family:'Noto Sans KR',sans-serif; }
-[data-testid="stSidebar"]{ background:#fff; border-right:1px solid #e8eaed; }
+html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif; }
+.stApp { background: #faf9f7; }
+.block-container { padding-top: 28px !important; max-width: 1080px !important; }
+[data-testid="stSidebar"] { background: #fff; }
 
-/* ── 히어로 섹션 ── */
-.hero{background:#fff;border:1px solid #e8eaed;border-radius:16px;padding:40px 44px;margin-bottom:28px;}
-.hero .kicker{font-size:11px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#1b64da;margin-bottom:10px;}
-.hero h1{font-size:28px;font-weight:700;color:#191f28;letter-spacing:-0.3px;margin:0 0 8px;}
-.hero .subtitle{font-size:15px;color:#4e5968;margin:0 0 28px;line-height:1.6;}
-.hero .divider{height:1px;background:#e8eaed;margin:24px 0;}
+/* ── 탭 스타일 ── */
+[data-baseweb="tab-list"] { gap: 4px; border-bottom: 2px solid #e8e3dc; }
+[data-baseweb="tab"] {
+    font-size: 14px; font-weight: 500; color: #9e9387;
+    padding: 10px 18px; border-radius: 8px 8px 0 0;
+    background: transparent; border: none;
+}
+[aria-selected="true"][data-baseweb="tab"] {
+    color: #3d2b1f; border-bottom: 2px solid #E07B54;
+    background: #fff8f5;
+}
 
-/* ── 기능 카드 ── */
-.feature-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:4px;}
-.feature-card{background:#f7f8fa;border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;}
-.feature-card .fc-icon{font-size:22px;margin-bottom:8px;}
-.feature-card .fc-title{font-size:13px;font-weight:700;color:#191f28;margin-bottom:4px;}
-.feature-card .fc-desc{font-size:12px;color:#8b95a1;line-height:1.5;}
+/* ── 히어로 ── */
+.hero {
+    background: linear-gradient(135deg, #fff8f5 0%, #f5f0ea 100%);
+    border: 1px solid #e8e0d5; border-radius: 16px;
+    padding: 42px 48px 36px; margin-bottom: 28px;
+}
+.hero-kicker {
+    font-size: 11px; font-weight: 700; letter-spacing: 2.5px;
+    text-transform: uppercase; color: #E07B54; margin-bottom: 10px;
+}
+.hero h1 {
+    font-size: 24px; font-weight: 700; color: #2d1f14;
+    letter-spacing: -.3px; margin: 0 0 8px;
+}
+.hero .sub { font-size: 15px; color: #6b5c52; line-height: 1.7; margin: 0 0 28px; }
+.hero-line { height: 1px; background: #e8e0d5; margin: 0 0 24px; }
+.feat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+.feat {
+    background: #fff; border: 1px solid #e8e0d5; border-radius: 12px;
+    padding: 16px; text-align: center;
+}
+.feat .fi { font-size: 22px; margin-bottom: 7px; }
+.feat .ft { font-size: 13px; font-weight: 600; color: #2d1f14; margin-bottom: 4px; }
+.feat .fd { font-size: 12px; color: #9e9387; line-height: 1.5; }
 
-/* ── 업로드 존 ── */
-.upload-zone{background:#fff;border:2px dashed #d0d8e8;border-radius:12px;padding:32px;text-align:center;margin-bottom:24px;}
-.upload-zone .uz-title{font-size:15px;font-weight:600;color:#191f28;margin-bottom:6px;}
-.upload-zone .uz-sub{font-size:13px;color:#8b95a1;}
+/* ── 공통 카드 ── */
+.card {
+    background: #fff; border: 1px solid #e8e0d5;
+    border-radius: 12px; padding: 20px 24px; margin-bottom: 16px;
+}
+.card-warm {
+    background: #fff8f5; border: 1px solid #f0e4da;
+    border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;
+}
 
 /* ── 섹션 헤더 ── */
-.sec-kicker{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1b64da;margin-bottom:3px;}
-.sec-title{font-size:19px;font-weight:700;color:#191f28;margin-bottom:4px;}
-.sec-desc{font-size:13px;color:#4e5968;margin-bottom:20px;line-height:1.6;}
+.sec-tag { font-size: 11px; font-weight: 700; letter-spacing: 2px;
+           text-transform: uppercase; color: #E07B54; margin-bottom: 2px; }
+.sec-h { font-size: 18px; font-weight: 700; color: #2d1f14; margin-bottom: 4px; }
+.sec-d { font-size: 13px; color: #6b5c52; margin-bottom: 18px; line-height: 1.6; }
 
-/* ── 카드 ── */
-.card{background:#fff;border:1px solid #e8eaed;border-radius:12px;padding:20px 24px;margin-bottom:16px;}
-.card-sm{background:#fff;border:1px solid #e8eaed;border-radius:10px;padding:16px 18px;}
-.card-title{font-size:12px;font-weight:600;color:#8b95a1;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;}
+/* ── 메트릭 박스 ── */
+.mbox {
+    background: #fff; border: 1px solid #e8e0d5; border-radius: 12px;
+    padding: 18px 20px; text-align: center;
+}
+.mbox-val { font-size: 30px; font-weight: 700; color: #2d1f14; line-height: 1; }
+.mbox-lbl { font-size: 11px; color: #9e9387; margin-top: 5px;
+            text-transform: uppercase; letter-spacing: 1px; }
 
-/* ── 메트릭 ── */
-.metric-row{display:flex;gap:14px;margin-bottom:20px;}
-.metric-box{flex:1;background:#fff;border:1px solid #e8eaed;border-radius:10px;padding:16px 20px;text-align:center;}
-.metric-box .mb-val{font-size:28px;font-weight:700;color:#191f28;line-height:1;}
-.metric-box .mb-label{font-size:11px;color:#8b95a1;margin-top:5px;text-transform:uppercase;letter-spacing:1px;}
+/* ── 문항 블록 ── */
+.iblock { border: 1px solid #e8e0d5; border-radius: 10px;
+          overflow: hidden; margin-bottom: 14px; }
+.ihead { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+         border-bottom: 1px solid #e8e0d5; }
+.ibadge { display: inline-flex; align-items: center; justify-content: center;
+          width: 26px; height: 26px; border-radius: 6px;
+          font-size: 12px; font-weight: 700; }
+.ihtit { font-size: 13px; font-weight: 600; color: #2d1f14; }
+.ihsub { font-size: 12px; color: #9e9387; margin-left: auto; }
+.irow { display: flex; gap: 10px; padding: 8px 16px;
+        border-bottom: 1px solid #f5f0ea; background: #fff; font-size: 13px; }
+.irow:last-child { border-bottom: none; }
+.irow:hover { background: #faf9f7; }
+.inum { font-family: monospace; font-size: 11px; color: #9e9387;
+        min-width: 26px; padding-top: 2px; }
+.itxt { color: #4e3d35; flex: 1; line-height: 1.5; }
+.irev { font-size: 10px; color: #E07B54; background: #fdf2ee;
+        padding: 2px 6px; border-radius: 3px; white-space: nowrap; align-self: flex-start; margin-top: 1px; }
 
-/* ── 문항표 ── */
-.item-block{border:1px solid #e8eaed;border-radius:10px;overflow:hidden;margin-bottom:16px;}
-.item-head{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#f7f8fa;border-bottom:1px solid #e8eaed;}
-.item-badge{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;font-size:12px;font-weight:700;}
-.item-head-title{font-size:13px;font-weight:600;color:#191f28;}
-.item-head-sub{font-size:12px;color:#8b95a1;margin-left:auto;}
-.item-row{display:flex;gap:12px;padding:8px 16px;border-bottom:1px solid #f0f1f3;background:#fff;}
-.item-row:last-child{border-bottom:none;}
-.item-row:hover{background:#fafbfc;}
-.item-num{font-family:monospace;font-size:11px;color:#8b95a1;min-width:26px;padding-top:2px;}
-.item-text{font-size:13px;color:#4e5968;flex:1;line-height:1.5;}
-.item-rev{font-size:10px;color:#e03131;background:#fff0f0;padding:2px 6px;border-radius:3px;white-space:nowrap;align-self:flex-start;margin-top:2px;}
+/* ── 인식 결과 ── */
+.rok { background: #eef6f0; border-radius: 7px; padding: 8px 14px;
+       font-size: 13px; color: #3a7a49; display: flex; align-items: center;
+       gap: 8px; margin-bottom: 5px; }
+.rfail { background: #fdf2ee; border-radius: 7px; padding: 8px 14px;
+         font-size: 13px; color: #c05c3a; display: flex; align-items: center;
+         gap: 8px; margin-bottom: 5px; }
 
-/* ── 인식결과 ── */
-.recog-item{display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:8px;margin-bottom:6px;font-size:13px;}
-.recog-ok{background:#e6f7f1;color:#0d9e75;}
-.recog-fail{background:#fff0f0;color:#e03131;}
-.recog-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-
-/* ── 분석설정 패널 ── */
-.settings-panel{background:#fff;border:1px solid #e8eaed;border-radius:12px;padding:20px 24px;margin-bottom:24px;}
-.settings-panel .sp-title{font-size:13px;font-weight:600;color:#191f28;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #f0f1f3;}
-
-/* ── 클러스터 카드 ── */
-.cluster-card{background:#fff;border:1px solid #e8eaed;border-radius:12px;padding:18px 20px;border-top:4px solid;}
-.cluster-card .cc-label{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;}
-.cluster-card .cc-name{font-size:17px;font-weight:700;color:#191f28;margin-bottom:5px;}
-.cluster-card .cc-desc{font-size:12px;color:#4e5968;line-height:1.5;margin-bottom:12px;}
-.cluster-card .cc-stats{display:flex;flex-direction:column;gap:5px;}
-.cc-stat-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid #f0f1f3;}
-.cc-stat-row:last-child{border-bottom:none;}
+/* ── 군집 카드 ── */
+.ccard {
+    background: #fff; border: 1px solid #e8e0d5; border-radius: 12px;
+    padding: 18px 20px; border-top: 4px solid;
+}
+.ccard-lbl { font-size: 10px; font-weight: 700; letter-spacing: 2px;
+             text-transform: uppercase; margin-bottom: 4px; }
+.ccard-name { font-size: 17px; font-weight: 700; color: #2d1f14; margin-bottom: 5px; }
+.ccard-desc { font-size: 12px; color: #6b5c52; line-height: 1.5; margin-bottom: 12px; }
+.cstat { display: flex; justify-content: space-between; font-size: 12px;
+         padding: 4px 0; border-bottom: 1px solid #f5f0ea; }
+.cstat:last-child { border-bottom: none; }
 
 /* ── 전략 카드 ── */
-.strat-card{background:#fff;border:1px solid #e8eaed;border-radius:12px;padding:20px;border-left:4px solid;height:100%;}
-.strat-label{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;}
-.strat-title{font-size:15px;font-weight:700;color:#191f28;margin-bottom:14px;}
-.strat-list li{font-size:12px;color:#4e5968;line-height:1.7;margin-bottom:2px;}
+.stcard {
+    background: #fff; border: 1px solid #e8e0d5; border-radius: 12px;
+    padding: 20px; border-left: 4px solid; height: 100%;
+}
+.stlbl { font-size: 10px; font-weight: 700; letter-spacing: 2px;
+         text-transform: uppercase; margin-bottom: 4px; }
+.sttit { font-size: 14px; font-weight: 700; color: #2d1f14; margin-bottom: 12px; }
+.stli li { font-size: 12px; color: #6b5c52; line-height: 1.8; margin-bottom: 2px; }
 
-/* ── 인포박스 ── */
-.info-box{background:#eef3fd;border:1px solid #dbe8fb;border-radius:8px;padding:14px 18px;margin-bottom:18px;}
-.info-box .ib-label{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1b64da;margin-bottom:5px;}
-.info-box p{font-size:13px;color:#4e5968;line-height:1.7;margin:0;}
+/* ── 인포 박스 ── */
+.infobox {
+    background: #fff8f5; border: 1px solid #f0e4da;
+    border-radius: 8px; padding: 13px 18px; margin-bottom: 16px;
+}
+.infobox .ilbl { font-size: 10px; font-weight: 700; letter-spacing: 2px;
+                 text-transform: uppercase; color: #E07B54; margin-bottom: 4px; }
+.infobox p { font-size: 13px; color: #6b5c52; line-height: 1.7; margin: 0; }
 
 /* ── 결론 배너 ── */
-.conclusion-banner{background:#1b64da;border-radius:12px;padding:28px 32px;color:#fff;margin-bottom:24px;display:flex;align-items:center;gap:24px;}
-.conclusion-banner .cb-num{font-size:52px;font-weight:700;line-height:1;opacity:.15;font-family:monospace;}
-.conclusion-banner h3{font-size:20px;font-weight:700;margin:0 0 6px;}
-.conclusion-banner p{font-size:13px;opacity:.85;line-height:1.6;margin:0;}
+.cbanner {
+    background: linear-gradient(135deg, #3d2b1f 0%, #5a3e2b 100%);
+    border-radius: 14px; padding: 28px 32px; color: #fff;
+    margin-bottom: 24px; display: flex; align-items: center; gap: 24px;
+}
+.cbn { font-size: 52px; font-weight: 700; opacity: .1;
+       font-family: monospace; line-height: 1; }
+.cbh { font-size: 19px; font-weight: 700; margin: 0 0 6px; }
+.cbp { font-size: 13px; opacity: .8; line-height: 1.7; margin: 0; }
+
+/* ── 업로드 ── */
+.uzone {
+    background: #fff; border: 2px dashed #d5c9bc; border-radius: 12px;
+    padding: 28px; text-align: center; margin-bottom: 18px;
+}
+.uzt { font-size: 15px; font-weight: 600; color: #2d1f14; margin-bottom: 5px; }
+.uzs { font-size: 13px; color: #9e9387; }
+
+/* ── 설정 패널 ── */
+.setpanel {
+    background: #fff8f5; border: 1px solid #e8e0d5;
+    border-radius: 12px; padding: 18px 22px; margin-bottom: 22px;
+}
+.setpanel-t { font-size: 13px; font-weight: 600; color: #2d1f14;
+              margin-bottom: 14px; padding-bottom: 10px;
+              border-bottom: 1px solid #e8e0d5; }
 
 /* ── 구분선 ── */
-.divider{height:1px;background:#e8eaed;margin:24px 0;}
+.hdiv { height: 1px; background: #e8e0d5; margin: 22px 0; }
 
-/* Streamlit 기본 여백 줄이기 */
-.block-container{padding-top:24px!important;padding-bottom:40px!important;max-width:1100px!important;}
-[data-testid="stMetricValue"]{font-size:24px!important;}
+/* ── 상태바 ── */
+.statusbar {
+    font-size: 11px; color: #9e9387; text-align: right;
+    margin-bottom: -10px; padding-bottom: 4px;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # 데이터 처리
-# ══════════════════════════════════════════════════════════
-@st.cache_data
-def load_and_process(file_bytes: bytes, file_name: str):
-    """파일 바이트 → raw_df + df_factors 반환"""
-    try:
-        engine = "xlrd" if file_name.endswith(".xls") else "openpyxl"
-        raw_df = pd.read_excel(file_bytes, engine=engine)
-    except Exception:
-        raw_df = pd.read_excel(file_bytes)
-    raw_df.columns = raw_df.columns.astype(str).str.strip()
-
-    # 하위요인 평균 계산
-    factors = pd.DataFrame(index=raw_df.index)
+# ══════════════════════════════════════════
+def _compute_factors(raw_df: pd.DataFrame):
     recognized = {}
+    df_f = pd.DataFrame(index=raw_df.index)
     for fk, items in FACTOR_ITEMS.items():
         found = [c for c in items if c in raw_df.columns]
         recognized[fk] = found
@@ -240,147 +314,207 @@ def load_and_process(file_bytes: bytes, file_name: str):
                 tmp[c] = pd.to_numeric(tmp[c], errors="coerce")
             if fk == "learning_attitude_mean" and NEGATIVE_ITEM in tmp.columns:
                 tmp[NEGATIVE_ITEM] = 6 - tmp[NEGATIVE_ITEM]
-            factors[fk] = tmp.mean(axis=1)
+            df_f[fk] = tmp.mean(axis=1)
         else:
-            factors[fk] = np.nan
+            df_f[fk] = np.nan
+    avail = [v for v in FACTOR_ITEMS if df_f[v].notna().sum() > 0]
+    return df_f, recognized, avail
 
-    avail = [v for v in FACTOR_ITEMS if factors[v].notna().sum() > 0]
-    return raw_df, factors, recognized, avail
+
+def load_file(file_bytes: bytes, fname: str):
+    try:
+        engine = "xlrd" if fname.lower().endswith(".xls") else "openpyxl"
+        raw = pd.read_excel(io.BytesIO(file_bytes), engine=engine)
+    except Exception:
+        raw = pd.read_excel(io.BytesIO(file_bytes))
+    raw.columns = raw.columns.astype(str).str.strip()
+    df_f, recognized, avail = _compute_factors(raw)
+    return raw, df_f, recognized, avail
 
 
-@st.cache_data
-def run_kmeans(factor_bytes, sel_vars_key: str, k: int):
-    """캐시를 위해 직렬화된 데이터 사용"""
-    import io
-    df_factors = pd.read_parquet(io.BytesIO(factor_bytes))
-    sel_vars = sel_vars_key.split("|")
+def make_demo():
+    np.random.seed(42)
+    n = 73
+    i1, i2, i3 = np.arange(0, 21), np.arange(21, 54), np.arange(54, 73)
+    demo = {}
+    for col in FACTOR_ITEMS["math_anxiety_mean"]:
+        a = np.zeros(n, int)
+        a[i1] = np.random.choice([4,5], len(i1), p=[.4,.6])
+        a[i2] = np.random.choice([2,3,4], len(i2), p=[.3,.4,.3])
+        a[i3] = np.random.choice([1,2], len(i3), p=[.5,.5])
+        demo[col] = a
+    for fk in ["math_self_efficacy_mean","math_interest_mean","learning_attitude_mean"]:
+        for col in FACTOR_ITEMS[fk]:
+            a = np.zeros(n, int)
+            a[i1] = np.random.choice([1,2], len(i1), p=[.5,.5])
+            a[i2] = np.random.choice([2,3,4], len(i2), p=[.3,.4,.3])
+            a[i3] = np.random.choice([4,5], len(i3), p=[.4,.6])
+            demo[col] = a
+    raw = pd.DataFrame(demo)
+    raw.columns = raw.columns.astype(str).str.strip()
+    df_f, recognized, avail = _compute_factors(raw)
+    return raw, df_f, recognized, avail
 
-    X = df_factors[sel_vars].dropna()
-    scaler = StandardScaler()
-    X_sc = scaler.fit_transform(X)
+
+@st.cache_data(show_spinner=False)
+def run_kmeans(fp: bytes, sel_key: str, k: int):
+    df = pd.read_parquet(io.BytesIO(fp))
+    sel = sel_key.split("|")
+    X = df[sel].dropna()
+    sc = StandardScaler()
+    X_sc = sc.fit_transform(X)
     km = KMeans(n_clusters=k, random_state=42, n_init=10)
     labels = km.fit_predict(X_sc)
-
-    df_res = df_factors.loc[X.index, sel_vars].copy()
+    df_res = df.loc[X.index, sel].copy()
     df_res["cluster"] = labels + 1
-    df_sc = pd.DataFrame(X_sc, columns=sel_vars, index=X.index)
-    df_sc["cluster"] = labels + 1
+    df_z = pd.DataFrame(X_sc, columns=sel, index=X.index)
+    df_z["cluster"] = labels + 1
+    pr = df_res.groupby("cluster")[sel].mean()
+    pz = df_z.groupby("cluster")[sel].mean()
+    return df_res, pr, pz, X_sc
 
-    profile_raw = df_res.groupby("cluster")[sel_vars].mean()
-    profile_z   = df_sc.groupby("cluster")[sel_vars].mean()
-    return df_res, df_sc, profile_raw, profile_z, X_sc
 
-
-@st.cache_data
-def calc_elbow(factor_bytes, sel_vars_key: str, k_min: int, k_max: int):
-    import io
-    df_factors = pd.read_parquet(io.BytesIO(factor_bytes))
-    sel_vars = sel_vars_key.split("|")
-    X = df_factors[sel_vars].dropna()
-    scaler = StandardScaler()
-    X_sc = scaler.fit_transform(X)
+@st.cache_data(show_spinner=False)
+def calc_elbow(fp: bytes, sel_key: str, k_min: int, k_max: int):
+    df = pd.read_parquet(io.BytesIO(fp))
+    sel = sel_key.split("|")
+    X = df[sel].dropna()
+    sc = StandardScaler()
+    X_sc = sc.fit_transform(X)
     ks, vals = [], []
     for k in range(k_min, k_max + 1):
         km = KMeans(n_clusters=k, random_state=42, n_init=10)
         km.fit(X_sc)
-        ks.append(k); vals.append(km.inertia_)
+        ks.append(k); vals.append(round(km.inertia_, 2))
     return ks, vals
 
 
-# ══════════════════════════════════════════════════════════
-# 공통 UI
-# ══════════════════════════════════════════════════════════
-def sec(kicker, title, desc=""):
-    html = f'<div class="sec-kicker">{kicker}</div><div class="sec-title">{title}</div>'
-    if desc:
-        html += f'<div class="sec-desc">{desc}</div>'
+# ══════════════════════════════════════════
+# UI 헬퍼
+# ══════════════════════════════════════════
+def sec(tag, h, d=""):
+    html = f'<div class="sec-tag">{tag}</div><div class="sec-h">{h}</div>'
+    if d:
+        html += f'<div class="sec-d">{d}</div>'
     st.markdown(html, unsafe_allow_html=True)
 
 
-def infobox(label, body):
-    st.markdown(f"""<div class="info-box"><div class="ib-label">{label}</div><p>{body}</p></div>""",
-                unsafe_allow_html=True)
+def infobox(lbl, body):
+    st.markdown(
+        f'<div class="infobox"><div class="ilbl">{lbl}</div><p>{body}</p></div>',
+        unsafe_allow_html=True)
 
 
-def divider():
-    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+def hdiv():
+    st.markdown('<div class="hdiv"></div>', unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════
-# 시각화
-# ══════════════════════════════════════════════════════════
-def plot_elbow(ks, inertias, k_sel):
+def clabel(i, k):
+    return f"C{i+1} {C_NAMES[i] if i < len(C_NAMES) else ''}"
+
+
+# ══════════════════════════════════════════
+# 차트 함수
+# ══════════════════════════════════════════
+PLOT_FONT = dict(family="Noto Sans KR, sans-serif", size=12, color="#4e3d35")
+
+def _layout(**kw):
+    base = dict(
+        plot_bgcolor="#fff", paper_bgcolor="#fff",
+        font=PLOT_FONT,
+        margin=dict(t=14, b=44, l=56, r=20),
+    )
+    base.update(kw)
+    return base
+
+
+def chart_elbow(ks, inertias, k_sel):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=ks, y=inertias, mode="lines+markers+text",
-        line=dict(color="#1B64DA", width=2.5),
+        line=dict(color="#E07B54", width=2.5),
         marker=dict(
-            size=[12 if k == k_sel else 7 for k in ks],
-            color=["#E03131" if k == k_sel else "#1B64DA" for k in ks],
-            line=dict(width=2, color="white"),
+            size=[11 if k == k_sel else 7 for k in ks],
+            color=["#c05c3a" if k == k_sel else "#E07B54" for k in ks],
+            line=dict(width=2, color="#fff"),
         ),
-        text=[str(round(v, 1)) for v in inertias],
+        text=[str(round(v,1)) for v in inertias],
         textposition="top center", textfont=dict(size=11),
     ))
     if k_sel in ks:
         idx = ks.index(k_sel)
         fig.add_annotation(x=k_sel, y=inertias[idx],
-                           text=f"  ← K={k_sel} 선택",
-                           showarrow=False, font=dict(color="#E03131", size=12),
+                           text=f"  ← K={k_sel}",
+                           showarrow=False, font=dict(color="#c05c3a", size=12),
                            xanchor="left")
-        fig.add_vline(x=k_sel, line_dash="dot", line_color="rgba(224,49,49,0.3)", line_width=1.5)
+        fig.add_vline(x=k_sel, line_dash="dot",
+                      line_color="rgba(192,92,58,0.3)", line_width=1.5)
     fig.update_layout(
-        xaxis=dict(title="클러스터 수 (K)", tickvals=ks, gridcolor="#f0f1f3"),
-        yaxis=dict(title="Inertia", gridcolor="#f0f1f3"),
-        plot_bgcolor="white", paper_bgcolor="white",
-        margin=dict(t=10, b=40, l=50, r=20), height=320, showlegend=False,
+        **_layout(height=320),
+        xaxis=dict(title="클러스터 수 K", tickvals=ks, gridcolor="#f5f0ea",
+                   tickfont=dict(size=12)),
+        yaxis=dict(title="Inertia", gridcolor="#f5f0ea"),
+        showlegend=False,
     )
     return fig
 
 
-def plot_counts(df_res, k):
+def chart_bar_count(df_res, k):
     counts = df_res["cluster"].value_counts().sort_index()
-    labels = [f"C{i+1} {CLUSTER_NAMES[i] if i < len(CLUSTER_NAMES) else ''}" for i in range(k)]
+    labels = [clabel(i, k) for i in range(k)]
     vals   = [counts.get(i+1, 0) for i in range(k)]
-    colors = CLUSTER_COLORS[:k]
+    colors = C_COLORS[:k]
+    mc = [f"rgba({int(c[1:3],16)},{int(c[3:5],16)},{int(c[5:7],16)},0.18)"
+          for c in colors]
     fig = go.Figure(go.Bar(
         x=labels, y=vals,
-        marker_color=["rgba({},{},{},0.15)".format(int(c[1:3],16),int(c[3:5],16),int(c[5:7],16)) for c in colors],
-        marker_line_color=colors, marker_line_width=1.5,
+        marker_color=mc, marker_line_color=colors, marker_line_width=1.5,
         text=vals, textposition="outside",
         textfont=dict(size=14, color=colors),
     ))
     fig.update_layout(
-        yaxis=dict(title="참가자 수 (명)", gridcolor="#f0f1f3"),
-        plot_bgcolor="white", paper_bgcolor="white",
-        margin=dict(t=10, b=40, l=50, r=20), height=300, showlegend=False,
+        **_layout(height=300),
+        yaxis=dict(title="응답자 수 (명)", gridcolor="#f5f0ea"),
+        showlegend=False,
     )
     return fig
 
 
-def plot_heatmap(profile, is_z):
+def chart_heatmap(profile: pd.DataFrame, is_z: bool):
     z = profile.values
-    yl = [f"C{i+1} {CLUSTER_NAMES[i] if i < len(CLUSTER_NAMES) else ''}" for i in range(len(profile))]
+    yl = [clabel(i, len(profile)) for i in range(len(profile))]
     xl = [FACTOR_LABELS.get(c, c) for c in profile.columns]
-    cs = ([[0,"#FFF0F0"],[0.5,"#F7F8FA"],[1,"#E6F7F1"]] if is_z
-          else [[0,"#EEF3FD"],[1,"#1B64DA"]])
+    cs = (
+        [[0,"#fdf2ee"],[0.5,"#faf9f7"],[1,"#eef6f0"]] if is_z
+        else [[0,"#eef3f9"],[1,"#2d5f8a"]]
+    )
     anns = []
     for i in range(len(z)):
         for j in range(len(z[0])):
             v = z[i][j]
-            anns.append(dict(x=j, y=i, text=f"{'+'if is_z and v>0 else ''}{v:.2f}",
-                             showarrow=False, font=dict(size=13, color="#191f28", family="monospace")))
-    fig = go.Figure(go.Heatmap(z=z, x=xl, y=yl, colorscale=cs, showscale=True,
-                               hoverongaps=False))
-    fig.update_traces(colorbar=dict(thickness=12, len=0.8), annotations=anns)
+            anns.append(dict(
+                x=j, y=i,
+                text=f"{'+'if is_z and v>0 else ''}{v:.2f}",
+                showarrow=False,
+                font=dict(size=13, color="#2d1f14", family="monospace"),
+            ))
+    fig = go.Figure(go.Heatmap(
+        z=z, x=xl, y=yl, colorscale=cs, showscale=True, hoverongaps=False,
+    ))
+    fig.update_traces(
+        colorbar=dict(thickness=11, len=0.8),
+        annotations=anns,
+    )
     fig.update_layout(
-        xaxis=dict(side="top"), plot_bgcolor="white", paper_bgcolor="white",
-        margin=dict(t=50, b=10, l=110, r=70), height=190 + len(profile) * 28,
+        **dict(plot_bgcolor="#fff", paper_bgcolor="#fff",
+               font=PLOT_FONT, margin=dict(t=46,b=12,l=110,r=65)),
+        xaxis=dict(side="top"),
+        height=190 + len(profile)*32,
     )
     return fig
 
 
-def plot_radar(profile_z, show_list):
+def chart_radar(profile_z: pd.DataFrame, show_list: list):
     cats = [FACTOR_LABELS.get(c, c) for c in profile_z.columns]
     cats_c = cats + [cats[0]]
     fig = go.Figure()
@@ -388,174 +522,183 @@ def plot_radar(profile_z, show_list):
         if (i+1) not in show_list:
             continue
         vals = list(row.values) + [row.values[0]]
+        r, g, b = int(C_COLORS[i][1:3],16), int(C_COLORS[i][3:5],16), int(C_COLORS[i][5:7],16)
         fig.add_trace(go.Scatterpolar(
             r=vals, theta=cats_c, fill="toself",
-            fillcolor="rgba({},{},{},0.13)".format(*[int(CLUSTER_COLORS[i][j:j+2],16) for j in (1,3,5)]),
-            line=dict(color=CLUSTER_COLORS[i], width=2.5),
-            name=f"C{i+1} {CLUSTER_NAMES[i] if i < len(CLUSTER_NAMES) else ''}",
-            marker=dict(size=7, color=CLUSTER_COLORS[i]),
+            fillcolor=f"rgba({r},{g},{b},0.15)",
+            line=dict(color=C_COLORS[i], width=2.5),
+            name=clabel(i, len(profile_z)),
+            marker=dict(size=7, color=C_COLORS[i]),
         ))
     fig.update_layout(
         polar=dict(
-            radialaxis=dict(visible=True, range=[-2.5, 2.5], tickfont=dict(size=10), gridcolor="#e8eaed"),
-            angularaxis=dict(tickfont=dict(size=13)), bgcolor="white",
+            radialaxis=dict(visible=True, range=[-2.5,2.5],
+                            tickfont=dict(size=10), gridcolor="#e8e0d5"),
+            angularaxis=dict(tickfont=dict(size=13)),
+            bgcolor="#fff",
         ),
-        paper_bgcolor="white",
+        paper_bgcolor="#fff", font=PLOT_FONT,
         legend=dict(orientation="h", y=-0.1, x=0.5, xanchor="center"),
-        margin=dict(t=20, b=60, l=60, r=60), height=440,
+        margin=dict(t=20,b=60,l=60,r=60), height=440,
     )
     return fig
 
 
-def plot_centroid(factor_bytes, sel_vars, k):
-    import io
-    df_factors = pd.read_parquet(io.BytesIO(factor_bytes))
-    X = df_factors[sel_vars].dropna()
-    scaler = StandardScaler()
-    X_sc = scaler.fit_transform(X)
+def chart_centroid(fp: bytes, sel_vars: list, k: int):
+    df = pd.read_parquet(io.BytesIO(fp))
+    X = df[sel_vars].dropna()
+    sc = StandardScaler()
+    X_sc = sc.fit_transform(X)
     pca = PCA(n_components=2, random_state=42)
     X2 = pca.fit_transform(X_sc)
 
     rng = np.random.RandomState(42)
-    centers = X2[rng.choice(len(X2), k, replace=False)]
-    n_steps, frames_l, frames_c = 6, [], []
-    cur = centers.copy()
-    for _ in range(n_steps):
-        dists = np.linalg.norm(X2[:, None] - cur[None, :], axis=2)
-        labels = dists.argmin(axis=1)
-        frames_l.append(labels.copy())
-        new_c = np.array([X2[labels==ci].mean(axis=0) if (labels==ci).any() else cur[ci] for ci in range(k)])
-        frames_c.append(new_c.copy())
-        cur = new_c
+    cur = X2[rng.choice(len(X2), k, replace=False)].copy()
+    steps = 6
+    fl, fc = [], []
+    for _ in range(steps):
+        d = np.linalg.norm(X2[:,None]-cur[None,:], axis=2)
+        lbl = d.argmin(axis=1)
+        fl.append(lbl.copy())
+        nc = np.array([X2[lbl==ci].mean(axis=0) if (lbl==ci).any()
+                       else cur[ci] for ci in range(k)])
+        fc.append(nc.copy()); cur = nc
 
-    titles = ["초기 랜덤 배정"] + [f"반복 {i}회 후" for i in range(1, 5)] + ["수렴 (최종)"]
-    fig = make_subplots(rows=2, cols=3, subplot_titles=titles, horizontal_spacing=0.06, vertical_spacing=0.14)
-    for fi in range(n_steps):
-        r, c = fi // 3 + 1, fi % 3 + 1
+    titles = ["초기 배정"] + [f"반복 {i}회" for i in range(1,5)] + ["수렴(최종)"]
+    fig = make_subplots(rows=2, cols=3, subplot_titles=titles,
+                        horizontal_spacing=.07, vertical_spacing=.15)
+    for fi in range(steps):
+        r, c = fi//3+1, fi%3+1
         for ci in range(k):
-            mask = frames_l[fi] == ci
+            mask = fl[fi]==ci
+            ri, gi, bi = int(C_COLORS[ci][1:3],16), int(C_COLORS[ci][3:5],16), int(C_COLORS[ci][5:7],16)
             fig.add_trace(go.Scatter(
-                x=X2[mask, 0], y=X2[mask, 1], mode="markers",
-                marker=dict(color=CLUSTER_COLORS[ci], size=5, opacity=0.7),
-                name=f"C{ci+1}" if fi == 0 else None,
-                showlegend=(fi == 0), legendgroup=f"C{ci+1}",
+                x=X2[mask,0], y=X2[mask,1], mode="markers",
+                marker=dict(color=f"rgba({ri},{gi},{bi},0.7)", size=5),
+                name=clabel(ci,k) if fi==0 else None,
+                showlegend=(fi==0), legendgroup=f"C{ci+1}",
             ), row=r, col=c)
         for ci in range(k):
-            cx_, cy_ = frames_c[fi][ci]
+            cx_, cy_ = fc[fi][ci]
             fig.add_trace(go.Scatter(
                 x=[cx_], y=[cy_], mode="markers",
-                marker=dict(symbol="x", size=13, color=CLUSTER_COLORS[ci],
-                            line=dict(width=2.5, color="#191f28")),
+                marker=dict(symbol="x", size=13, color=C_COLORS[ci],
+                            line=dict(width=2.5, color="#2d1f14")),
                 showlegend=False,
             ), row=r, col=c)
-    fig.update_layout(height=500, paper_bgcolor="white",
-                      legend=dict(orientation="h", y=-0.04, x=0.5, xanchor="center"),
-                      margin=dict(t=40, b=40, l=20, r=20))
+    fig.update_layout(
+        height=500, paper_bgcolor="#fff", font=PLOT_FONT,
+        legend=dict(orientation="h", y=-0.04, x=0.5, xanchor="center"),
+        margin=dict(t=40,b=40,l=18,r=18),
+    )
     for ax in fig.layout:
-        if ax.startswith("xaxis") or ax.startswith("yaxis"):
-            fig.layout[ax].update(showgrid=True, gridcolor="#f0f1f3", zeroline=False)
+        if ax.startswith(("xaxis","yaxis")):
+            fig.layout[ax].update(showgrid=True, gridcolor="#f5f0ea", zeroline=False)
     return fig
 
 
-def plot_scatter_var(df_res, df_factors, x_var, y_var, k):
-    merged = df_res[["cluster"]].join(df_factors[[x_var, y_var]], how="inner").dropna()
+def chart_scatter(df_res, df_f, x_var, y_var, k):
+    merged = df_res[["cluster"]].join(df_f[[x_var,y_var]], how="inner").dropna()
     fig = go.Figure()
     for ci in range(k):
-        sub = merged[merged["cluster"] == ci+1]
+        sub = merged[merged["cluster"]==ci+1]
+        ri,gi,bi = int(C_COLORS[ci][1:3],16), int(C_COLORS[ci][3:5],16), int(C_COLORS[ci][5:7],16)
         fig.add_trace(go.Scatter(
             x=sub[x_var], y=sub[y_var], mode="markers",
-            marker=dict(color=CLUSTER_COLORS[ci], size=7, opacity=0.75,
-                        line=dict(width=0.5, color="white")),
-            name=f"C{ci+1} {CLUSTER_NAMES[ci] if ci < len(CLUSTER_NAMES) else ''}",
+            marker=dict(color=f"rgba({ri},{gi},{bi},0.75)", size=8,
+                        line=dict(width=0.5, color="#fff")),
+            name=clabel(ci, k),
         ))
-    cents = merged.groupby("cluster")[[x_var, y_var]].mean()
+    cents = merged.groupby("cluster")[[x_var,y_var]].mean()
     for ci in range(k):
         if (ci+1) in cents.index:
             fig.add_trace(go.Scatter(
-                x=[cents.loc[ci+1, x_var]], y=[cents.loc[ci+1, y_var]], mode="markers",
-                marker=dict(symbol="x", size=15, color=CLUSTER_COLORS[ci],
-                            line=dict(width=3, color="#191f28")),
+                x=[cents.loc[ci+1,x_var]], y=[cents.loc[ci+1,y_var]], mode="markers",
+                marker=dict(symbol="x", size=15, color=C_COLORS[ci],
+                            line=dict(width=3, color="#2d1f14")),
                 showlegend=False,
             ))
     fig.update_layout(
-        xaxis=dict(title=FACTOR_LABELS.get(x_var, x_var), gridcolor="#f0f1f3", zeroline=False),
-        yaxis=dict(title=FACTOR_LABELS.get(y_var, y_var), gridcolor="#f0f1f3", zeroline=False),
-        plot_bgcolor="white", paper_bgcolor="white",
-        legend=dict(orientation="h", y=-0.14, x=0.5, xanchor="center"),
-        margin=dict(t=10, b=60, l=60, r=20), height=380,
+        **_layout(height=380),
+        xaxis=dict(title=FACTOR_LABELS.get(x_var,x_var), gridcolor="#f5f0ea", zeroline=False),
+        yaxis=dict(title=FACTOR_LABELS.get(y_var,y_var), gridcolor="#f5f0ea", zeroline=False),
+        legend=dict(orientation="h", y=-0.16, x=0.5, xanchor="center"),
     )
     return fig
 
 
-def plot_pca(X_sc, df_res, k):
+def chart_pca(X_sc, df_res, k):
     pca = PCA(n_components=2, random_state=42)
     X2 = pca.fit_transform(X_sc)
-    ev = pca.explained_variance_ratio_ * 100
+    ev = pca.explained_variance_ratio_*100
+    lbl = df_res["cluster"].values
     fig = go.Figure()
-    lbl_arr = df_res["cluster"].values
     for ci in range(k):
-        mask = lbl_arr == ci+1
-        if mask.any():
-            fig.add_trace(go.Scatter(
-                x=X2[mask, 0], y=X2[mask, 1], mode="markers",
-                marker=dict(color=CLUSTER_COLORS[ci], size=7, opacity=0.72,
-                            line=dict(width=0.5, color="white")),
-                name=f"C{ci+1} {CLUSTER_NAMES[ci] if ci < len(CLUSTER_NAMES) else ''}",
-            ))
-            cx_, cy_ = X2[mask].mean(axis=0)
-            fig.add_trace(go.Scatter(
-                x=[cx_], y=[cy_], mode="markers",
-                marker=dict(symbol="x", size=15, color=CLUSTER_COLORS[ci],
-                            line=dict(width=3, color="#191f28")),
-                showlegend=False,
-            ))
+        mask = lbl==ci+1
+        if not mask.any(): continue
+        ri,gi,bi = int(C_COLORS[ci][1:3],16), int(C_COLORS[ci][3:5],16), int(C_COLORS[ci][5:7],16)
+        fig.add_trace(go.Scatter(
+            x=X2[mask,0], y=X2[mask,1], mode="markers",
+            marker=dict(color=f"rgba({ri},{gi},{bi},0.72)", size=7,
+                        line=dict(width=0.5, color="#fff")),
+            name=clabel(ci,k),
+        ))
+        cx_, cy_ = X2[mask].mean(axis=0)
+        fig.add_trace(go.Scatter(
+            x=[cx_], y=[cy_], mode="markers",
+            marker=dict(symbol="x", size=15, color=C_COLORS[ci],
+                        line=dict(width=3, color="#2d1f14")),
+            showlegend=False,
+        ))
     fig.update_layout(
-        xaxis=dict(title=f"PC1 ({ev[0]:.1f}%)", gridcolor="#f0f1f3", zeroline=True, zerolinecolor="#d0d4db"),
-        yaxis=dict(title=f"PC2 ({ev[1]:.1f}%)", gridcolor="#f0f1f3", zeroline=True, zerolinecolor="#d0d4db"),
-        plot_bgcolor="white", paper_bgcolor="white",
-        legend=dict(orientation="h", y=-0.14, x=0.5, xanchor="center"),
-        margin=dict(t=10, b=60, l=60, r=20), height=400,
+        **_layout(height=400),
+        xaxis=dict(title=f"PC1 ({ev[0]:.1f}%)", gridcolor="#f5f0ea",
+                   zeroline=True, zerolinecolor="#e8e0d5"),
+        yaxis=dict(title=f"PC2 ({ev[1]:.1f}%)", gridcolor="#f5f0ea",
+                   zeroline=True, zerolinecolor="#e8e0d5"),
+        legend=dict(orientation="h", y=-0.16, x=0.5, xanchor="center"),
     )
     return fig
 
 
-# ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # 탭 1 : 소개
-# ══════════════════════════════════════════════════════════
-def tab_intro(uploaded):
+# ══════════════════════════════════════════
+def tab_intro():
     # ── 히어로 ──
     st.markdown("""
     <div class="hero">
-        <div class="kicker">K-Means Clustering Analysis</div>
-        <h1>K-평균 군집화를 활용한 수학 학습자 유형 분석</h1>
-        <p class="subtitle">
-            수학불안 · 자기효능감 · 흥미 · 학습태도 설문 데이터를 업로드하면<br>
-            학생 집단을 자동으로 유형화하고 시각화합니다.
-        </p>
-        <div class="divider"></div>
-        <div style="font-size:12px;font-weight:600;color:#8b95a1;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">이 웹앱으로 확인할 수 있는 것</div>
-        <div class="feature-grid">
-            <div class="feature-card">
-                <div class="fc-icon">📊</div>
-                <div class="fc-title">학습자 유형 자동 분류</div>
-                <div class="fc-desc">K-평균 알고리즘으로 학생들을 취약형·우수형·보통형으로 자동 군집화</div>
-            </div>
-            <div class="feature-card">
-                <div class="fc-icon">🔍</div>
-                <div class="fc-title">어려움 원인 규명</div>
-                <div class="fc-desc">불안·자신감·흥미·태도 4가지 요인 중 어느 것이 학습 방해 요인인지 파악</div>
-            </div>
-            <div class="feature-card">
-                <div class="fc-icon">📈</div>
-                <div class="fc-title">인터랙티브 시각화</div>
-                <div class="fc-desc">히트맵·레이더·산점도·Elbow 그래프로 군집 특성을 다각도로 탐색</div>
-            </div>
-            <div class="feature-card">
-                <div class="fc-icon">🎯</div>
-                <div class="fc-title">맞춤형 교수 전략</div>
-                <div class="fc-desc">군집별 특성에 맞는 구체적인 수학 수업 지도 방안을 제시</div>
-            </div>
+      <div class="hero-kicker">K-Means Clustering · Math Learner Analysis</div>
+      <h1>K-평균 군집화를 활용한 수학 학습자 유형 분석</h1>
+      <p class="sub">
+        수학불안 · 자기효능감 · 흥미 · 학습태도 설문 데이터를 업로드하면<br>
+        학생 집단을 자동으로 유형화하고 시각화합니다.
+      </p>
+      <div class="hero-line"></div>
+      <div style="font-size:11px;font-weight:700;color:#9e9387;text-transform:uppercase;
+                  letter-spacing:1.5px;margin-bottom:12px;">이 웹앱으로 확인할 수 있는 것</div>
+      <div class="feat-grid">
+        <div class="feat">
+          <div class="fi">📊</div>
+          <div class="ft">학습자 유형 자동 분류</div>
+          <div class="fd">K-평균 알고리즘으로 학생을 취약형·중간형·강점형으로 군집화</div>
         </div>
+        <div class="feat">
+          <div class="fi">🔍</div>
+          <div class="ft">어려움 원인 진단</div>
+          <div class="fd">불안·자신감·흥미·태도 4요인 중 학습을 방해하는 원인 파악</div>
+        </div>
+        <div class="feat">
+          <div class="fi">📈</div>
+          <div class="ft">인터랙티브 시각화</div>
+          <div class="fd">히트맵·레이더·산점도로 군집 특성을 직관적으로 탐색</div>
+        </div>
+        <div class="feat">
+          <div class="fi">🎯</div>
+          <div class="ft">맞춤형 교수 전략</div>
+          <div class="fd">군집별 특성에 맞는 구체적인 수학 수업 지도 방안 제시</div>
+        </div>
+      </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -563,527 +706,518 @@ def tab_intro(uploaded):
     sec("Step 1", "분석 파일 업로드",
         "수학 설문 응답이 담긴 엑셀 파일(.xlsx / .xls)을 업로드하면 분석이 시작됩니다.")
 
-    uploaded_file = st.file_uploader(
-        "엑셀 파일을 여기에 드래그하거나 클릭하여 선택하세요",
-        type=["xlsx", "xls"],
+    up = st.file_uploader(
+        "엑셀 파일 업로드",
+        type=["xlsx","xls"],
         label_visibility="collapsed",
-        key="main_uploader",
+        key="uploader",
     )
-
-    if uploaded_file is not None:
-        st.session_state["uploaded_file"] = uploaded_file
-        st.success(f"✅ **{uploaded_file.name}** 업로드 완료 — '데이터' 탭에서 내용을 확인하세요.")
-    elif "uploaded_file" in st.session_state:
-        st.info("📎 이전에 업로드한 파일이 사용됩니다. 새 파일을 업로드하면 교체됩니다.")
+    if up is not None:
+        st.session_state["file_data"] = up.read()
+        st.session_state["file_name"] = up.name
+        st.success(f"✅ **{up.name}** 업로드 완료 — '데이터' 탭에서 확인하세요.")
+    elif "file_name" in st.session_state:
+        st.info(f"📎 현재 파일: **{st.session_state['file_name']}** — 새 파일을 업로드하면 교체됩니다.")
     else:
         st.markdown("""
-        <div class="upload-zone">
-            <div class="uz-title">📁 파일을 업로드하세요</div>
-            <div class="uz-sub">지원 형식: .xlsx · .xls &nbsp;|&nbsp; 파일이 없으면 데모 데이터로 분석됩니다</div>
-        </div>
-        """, unsafe_allow_html=True)
+        <div class="uzone">
+          <div class="uzt">📁 파일을 업로드하세요</div>
+          <div class="uzs">지원 형식: .xlsx · .xls &nbsp;|&nbsp; 파일이 없으면 데모 데이터(73명)로 진행됩니다.</div>
+        </div>""", unsafe_allow_html=True)
 
-    divider()
-
-    # ── 파일 형식 안내 ──
+    hdiv()
     sec("Step 2", "파일 형식 안내",
         "아래 컬럼명이 정확히 포함되어 있어야 문항이 인식됩니다.")
 
-    col_guide = {
-        "수학불안 (A1~A8)": "A1. 수학 시간에 어려운 문제가 나오면 긴장된다.",
-        "자기효능감 (E1~E8)": "E1. 나는 노력하면 수학 실력을 향상시킬 수 있다고 생각한다.",
-        "수학흥미 (I1~I8)": "I1. 수학 문제를 해결했을 때 성취감을 느낀다.",
-        "학습태도 (T1~T6)": "T1. 나는 수학 공부 계획을 세우고 실천하는 편이다.",
-    }
-    col_colors = ["#E03131", "#1B64DA", "#0D9E75", "#C47D0E"]
+    guides = [
+        ("수학불안 A1–A8",  "#E07B54", "#fdf2ee",
+         "A1. 수학 시간에 어려운 문제가 나오면 긴장된다."),
+        ("자기효능감 E1–E8", "#5B8DB8", "#eef3f9",
+         "E1. 나는 노력하면 수학 실력을 향상시킬 수 있다고 생각한다."),
+        ("수학흥미 I1–I8",   "#6BAA75", "#eef6f0",
+         "I1. 수학 문제를 해결했을 때 성취감을 느낀다."),
+        ("학습태도 T1–T6",   "#B8975B", "#f9f5ee",
+         "T1. 나는 수학 공부 계획을 세우고 실천하는 편이다."),
+    ]
     cols = st.columns(4)
-    for (lbl, ex), color, col in zip(col_guide.items(), col_colors, cols):
+    for (lbl, color, bg, ex), col in zip(guides, cols):
         with col:
             st.markdown(f"""
-            <div class="card-sm">
-                <div style="font-size:12px;font-weight:700;color:{color};margin-bottom:6px;">{lbl}</div>
-                <div style="font-size:11px;color:#8b95a1;line-height:1.5;">컬럼명 예시:<br><code style="font-size:10px;color:#4e5968;">{ex}</code><br>… 동일 형식 반복</div>
-            </div>
-            """, unsafe_allow_html=True)
+            <div style="background:{bg};border:1px solid {color}30;border-radius:10px;
+                        padding:14px;font-size:12px;">
+              <div style="font-weight:700;color:{color};margin-bottom:6px;">{lbl}</div>
+              <div style="color:#6b5c52;line-height:1.5;">
+                컬럼명 예시:<br>
+                <code style="font-size:10px;color:#2d1f14;">{ex}</code><br>
+                … 동일 형식 반복
+              </div>
+            </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    infobox("참고", "파일 없이 실행하면 <b>데모 데이터(67명)</b>로 모든 분석이 자동 진행됩니다. '데이터분석' 탭에서 바로 결과를 확인할 수 있습니다.")
+    infobox("참고",
+            "파일 없이 실행하면 <b>데모 데이터(73명)</b>로 모든 분석이 자동 진행됩니다. "
+            "'데이터분석 및 시각화' 탭에서 바로 결과를 확인하세요.")
 
 
-# ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # 탭 2 : 데이터
-# ══════════════════════════════════════════════════════════
-def tab_data(raw_df, df_factors, recognized, avail_vars):
-    sec("Data Overview", "데이터 확인")
+# ══════════════════════════════════════════
+def tab_data(raw, df_f, recognized, avail, is_demo):
+    if is_demo:
+        infobox("데모 데이터 사용 중",
+                "'소개' 탭에서 엑셀 파일을 업로드하면 실제 데이터로 분석됩니다.")
 
     # ── 요약 메트릭 ──
-    n_total = len(raw_df)
-    n_cols  = len(raw_df.columns)
-    n_avail = len(avail_vars)
-    n_items_found = sum(len(v) for v in recognized.values())
-    n_items_total = sum(len(v) for v in FACTOR_ITEMS.values())
+    n_total   = len(raw)
+    n_cols    = len(raw.columns)
+    n_avail   = len(avail)
+    n_found   = sum(len(v) for v in recognized.values())
+    n_all_q   = sum(len(v) for v in FACTOR_ITEMS.values())
+    n_missing = df_f[avail].isna().any(axis=1).sum()
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("전체 응답 수", f"{n_total}명")
-    with c2:
-        st.metric("전체 컬럼 수", f"{n_cols}개")
-    with c3:
-        st.metric("분석 가능 변수", f"{n_avail}개 하위요인")
-    with c4:
-        st.metric("인식된 문항 수", f"{n_items_found} / {n_items_total}개")
+    sec("Overview", "데이터 요약")
+    c1,c2,c3,c4 = st.columns(4)
+    for col, val, lbl in zip(
+        [c1,c2,c3,c4],
+        [f"{n_total}명", f"{n_cols}개", f"{n_avail}개 하위요인", f"{n_found}/{n_all_q}개"],
+        ["전체 응답 수","전체 컬럼 수","분석 가능 변수","인식된 문항"],
+    ):
+        with col:
+            st.markdown(f"""
+            <div class="mbox">
+              <div class="mbox-val">{val}</div>
+              <div class="mbox-lbl">{lbl}</div>
+            </div>""", unsafe_allow_html=True)
 
-    divider()
+    if n_missing > 0:
+        st.warning(f"⚠️ 결측치 포함 행 {n_missing}개 — 분석 시 자동 제외됩니다.")
+
+    hdiv()
 
     # ── 원자료 미리보기 (토글) ──
     sec("Raw Data", "원자료 미리보기")
     with st.expander("📋 원자료 테이블 펼치기 / 접기", expanded=False):
-        n_preview = st.slider("표시할 행 수", 5, min(50, n_total), 10, key="preview_rows")
-        st.dataframe(raw_df.head(n_preview), use_container_width=True, height=320)
-        st.caption(f"전체 {n_total}행 × {n_cols}열 중 앞 {n_preview}행 표시")
+        n_p = st.slider("표시 행 수", 5, min(50, n_total), 10, key="prev_n")
+        st.dataframe(raw.head(n_p), use_container_width=True, height=300)
+        st.caption(f"전체 {n_total}행 × {n_cols}열 중 앞 {n_p}행 표시")
 
-    divider()
+    hdiv()
 
-    # ── 문항 인식 결과 ──
+    # ── 문항 인식 결과 확인 버튼 ──
     sec("Item Recognition", "문항 인식 결과 확인",
-        "업로드된 파일에서 각 하위요인 문항이 몇 개나 인식되었는지 확인합니다.")
+        "업로드 파일에서 각 하위요인 문항이 몇 개 인식되었는지 확인합니다.")
 
-    if st.button("🔍 문항 인식 결과 확인", type="primary", use_container_width=False):
+    if st.button("🔍 문항 인식 결과 확인", type="primary", key="btn_recog"):
         st.session_state["show_recog"] = True
 
     if st.session_state.get("show_recog", False):
+        all_ok = True
         for fk in FACTOR_ITEMS:
-            letter, color, bg = FACTOR_BADGE[fk]
-            found  = recognized.get(fk, [])
-            total  = FACTOR_ITEMS[fk]
-            label  = FACTOR_LABELS[fk]
-            ok     = len(found) == len(total)
+            letter, color, bg = FACTOR_META[fk]
+            found = recognized.get(fk, [])
+            total = FACTOR_ITEMS[fk]
+            lbl   = FACTOR_LABELS[fk]
+            ok    = len(found) == len(total)
+            if not ok: all_ok = False
 
             st.markdown(f"""
-            <div class="item-block">
-                <div class="item-head">
-                    <span class="item-badge" style="background:{bg};color:{color};">{letter}</span>
-                    <span class="item-head-title">{label}</span>
-                    <span class="item-head-sub" style="color:{'#0d9e75' if ok else '#e03131'};">
-                        {'✅' if ok else '⚠️'} {len(found)}/{len(total)} 인식
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
+            <div class="iblock">
+              <div class="ihead" style="background:{bg};">
+                <span class="ibadge" style="background:{color}20;color:{color};">{letter}</span>
+                <span class="ihtit">{lbl}</span>
+                <span class="ihsub" style="color:{'#3a7a49' if ok else '#c05c3a'};">
+                  {'✅' if ok else '⚠️'} {len(found)}/{len(total)} 인식
+                </span>
+              </div>""", unsafe_allow_html=True)
 
             rows_html = ""
             for item in total:
                 num  = item.split(".")[0]
                 text = ".".join(item.split(".")[1:]).strip()
-                is_found = item in found
-                rev  = '<span class="item-rev">역채점</span>' if item == NEGATIVE_ITEM else ""
-                icon = "✅" if is_found else "❌"
-                rows_html += f'<div class="item-row"><div class="item-num">{num}</div><div class="item-text">{icon} {text}</div>{rev}</div>'
-
+                is_f = item in found
+                rev  = '<span class="irev">역채점</span>' if item == NEGATIVE_ITEM else ""
+                rows_html += (f'<div class="irow">'
+                              f'<div class="inum">{num}</div>'
+                              f'<div class="itxt">{"✅" if is_f else "❌"} {text}</div>'
+                              f'{rev}</div>')
             st.markdown(rows_html + "</div>", unsafe_allow_html=True)
 
-        if n_items_found < n_items_total:
-            st.warning(f"⚠️ {n_items_total - n_items_found}개 문항을 찾을 수 없습니다. 컬럼명이 정확한지 확인해 주세요.")
-        else:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if all_ok:
             st.success("✅ 모든 문항이 정상적으로 인식되었습니다.")
+        else:
+            st.warning("⚠️ 일부 문항을 찾을 수 없습니다. 컬럼명을 확인해 주세요.")
 
-    divider()
+    hdiv()
 
     # ── 하위요인 평균 미리보기 ──
     sec("Factor Scores", "하위요인 평균 점수 미리보기")
     with st.expander("📊 하위요인 평균 데이터 펼치기", expanded=False):
-        disp = df_factors[avail_vars].copy()
-        disp.columns = [FACTOR_LABELS.get(c, c) for c in disp.columns]
+        disp = df_f[avail].rename(columns=FACTOR_LABELS)
         st.dataframe(disp.round(2).head(20), use_container_width=True)
         st.caption(f"전체 {len(disp)}행 중 앞 20행 | 결측치 포함 행은 분석에서 제외됩니다.")
 
 
-# ══════════════════════════════════════════════════════════
-# 탭 3 : 데이터 분석
-# ══════════════════════════════════════════════════════════
-def tab_analysis(df_factors, avail_vars, factor_bytes):
+# ══════════════════════════════════════════
+# 탭 3 : 데이터분석 및 시각화
+# ══════════════════════════════════════════
+def tab_analysis(df_f, avail, fp):
+    # ── 분석 설정 ──
+    st.markdown('<div class="setpanel"><div class="setpanel-t">⚙️ 분석 설정</div>',
+                unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([3, 1, 1])
+    with c1:
+        sel_lbls = st.multiselect(
+            "군집화에 사용할 변수",
+            options=[FACTOR_LABELS[v] for v in avail],
+            default=[FACTOR_LABELS[v] for v in avail],
+            key="sel_vars",
+        )
+        sel_vars = [v for v in avail if FACTOR_LABELS[v] in sel_lbls]
+        if len(sel_vars) < 2:
+            st.warning("최소 2개 이상 선택하세요.")
+            sel_vars = avail[:2]
+    with c2:
+        k = int(st.number_input("클러스터 수 K", 2, 8, 3, 1, key="k_val"))
+    with c3:
+        k_min = int(st.number_input("Elbow K 최솟값", 2, 6, 2, 1, key="kmin"))
+        k_max = int(st.number_input("Elbow K 최댓값", 3, 12, 8, 1, key="kmax"))
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    # ── 분석 설정 패널 ──
-    with st.container():
-        st.markdown('<div class="settings-panel"><div class="sp-title">⚙️ 분석 설정</div>', unsafe_allow_html=True)
-        c1, c2, c3 = st.columns([3, 1, 1])
-        with c1:
-            sel_labels = st.multiselect(
-                "군집화에 사용할 변수",
-                options=[FACTOR_LABELS[v] for v in avail_vars],
-                default=[FACTOR_LABELS[v] for v in avail_vars],
-                key="sel_vars_ms",
-            )
-            sel_vars = [v for v in avail_vars if FACTOR_LABELS[v] in sel_labels]
-            if len(sel_vars) < 2:
-                st.warning("최소 2개 이상의 변수를 선택하세요.")
-                sel_vars = avail_vars[:2]
-        with c2:
-            k = st.number_input("클러스터 수 (K)", 2, 8, 3, 1, key="k_val")
-        with c3:
-            k_min = st.number_input("Elbow K 최솟값", 2, 6, 2, 1)
-            k_max = st.number_input("Elbow K 최댓값", 3, 12, 8, 1)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    if k_min >= k_max:
-        k_max = k_min + 1
-
+    if k_min >= k_max: k_max = k_min + 1
     sel_key = "|".join(sel_vars)
-    k = int(k)
 
-    # ── K-Means 실행 ──
-    with st.spinner("K-Means 군집화 실행 중..."):
-        df_res, df_sc, profile_raw, profile_z, X_sc = run_kmeans(factor_bytes, sel_key, k)
+    with st.spinner("군집화 실행 중..."):
+        df_res, pr, pz, X_sc = run_kmeans(fp, sel_key, k)
+
+    # 결론 탭 공유
+    st.session_state["result"] = (df_res, pr, pz, k)
 
     # ── 서브탭 ──
-    sub = st.tabs([
-        "① Elbow 분석",
-        "② 군집 인원",
-        "③ 히트맵",
-        "④ 레이더 차트",
-        "⑤ Centroid 변화",
-        "⑥ 산점도",
-        "⑦ 설문 문항",
+    s = st.tabs([
+        "📉 Elbow 분석", "👥 군집 인원",
+        "🗺️ 히트맵", "🕸️ 레이더 차트",
+        "⚙️ Centroid 변화", "🔵 산점도", "📝 설문 문항",
     ])
 
-    # ① Elbow
-    with sub[0]:
-        sec("Elbow Method", "최적 K 탐색",
-            "변수와 K 범위는 위 분석 설정에서 조절합니다. Inertia 감소폭이 완만해지는 지점이 최적 K입니다.")
+    # ─ Elbow ─
+    with s[0]:
+        sec("Elbow", "최적 K 탐색",
+            "Inertia 감소폭이 완만해지는 '팔꿈치' 지점이 최적 K 후보입니다.")
         infobox("해석 안내",
-                "K가 증가할수록 Inertia(군집 내 분산)는 감소합니다. 감소폭이 급격히 줄어드는 <b>'팔꿈치(Elbow)'</b> 지점이 최적 K 후보입니다.")
-        ks, inertias = calc_elbow(factor_bytes, sel_key, int(k_min), int(k_max))
-        st.plotly_chart(plot_elbow(ks, inertias, k), use_container_width=True)
-        infobox("결과 해석",
-                f"현재 선택된 <b>K={k}</b> 이후 Inertia 감소폭이 완만해집니다. "
-                "위 설정 패널의 K 값을 바꾸면 그래프가 즉시 업데이트됩니다.")
+                "K가 증가할수록 Inertia(군집 내 분산)는 감소합니다. "
+                "감소폭이 급격히 줄어드는 지점 이후가 팔꿈치입니다. "
+                "설정 패널에서 K와 범위를 바꾸면 즉시 반영됩니다.")
+        ks, ins = calc_elbow(fp, sel_key, k_min, k_max)
+        st.plotly_chart(chart_elbow(ks, ins, k), use_container_width=True)
+        infobox("현재 선택",
+                f"<b>K={k}</b> 이후 감소폭이 완만해집니다. "
+                "데이터 특성과 해석 목적을 함께 고려해 최종 K를 선택하세요.")
 
-    # ② 인원
-    with sub[1]:
-        sec("Distribution", "군집별 참가자 수",
-            f"K={k}으로 분류된 각 군집의 학생 수 분포입니다.")
+    # ─ 군집 인원 ─
+    with s[1]:
+        sec("Distribution", "군집별 응답자 수",
+            f"K={k}로 분류된 각 군집의 학생 수 분포입니다.")
         counts = df_res["cluster"].value_counts().sort_index()
-        n_total = len(df_res)
-        cols = st.columns(k)
+        n_tot  = len(df_res)
+        cols   = st.columns(k)
         for i, col in enumerate(cols):
             if i >= k: break
             n = counts.get(i+1, 0)
-            name = CLUSTER_NAMES[i] if i < len(CLUSTER_NAMES) else f"군집{i+1}"
             with col:
-                st.metric(f"C{i+1} {name}", f"{n}명", f"{n/n_total*100:.1f}%")
-        st.plotly_chart(plot_counts(df_res, k), use_container_width=True)
+                st.metric(clabel(i, k), f"{n}명", f"{n/n_tot*100:.1f}%")
+        st.plotly_chart(chart_bar_count(df_res, k), use_container_width=True)
 
-    # ③ 히트맵
-    with sub[2]:
+    # ─ 히트맵 ─
+    with s[2]:
         sec("Heatmap", "군집 프로파일 히트맵")
-        ht1, ht2 = st.tabs(["원점수 평균", "표준화 평균 (Z-score)"])
-        with ht1:
-            infobox("해석 안내", "1~5점 척도 기준 군집별 평균 점수. 색이 진할수록 점수가 높습니다.")
-            pr = profile_raw.copy()
-            pr.index = [f"C{i+1} {CLUSTER_NAMES[i] if i < len(CLUSTER_NAMES) else ''}" for i in range(len(pr))]
-            st.plotly_chart(plot_heatmap(pr, False), use_container_width=True)
-        with ht2:
+        h1, h2 = st.tabs(["원점수 평균", "표준화 평균 (Z-score)"])
+        with h1:
             infobox("해석 안내",
-                    "Z-score 0보다 크면 전체 평균 이상(초록), 0보다 작으면 이하(빨강). 군집 간 상대적 차이를 파악합니다.")
-            pz = profile_z.copy()
-            pz.index = [f"C{i+1} {CLUSTER_NAMES[i] if i < len(CLUSTER_NAMES) else ''}" for i in range(len(pz))]
-            st.plotly_chart(plot_heatmap(pz, True), use_container_width=True)
+                    "1~5점 척도 기준 군집별 실제 평균 점수입니다. "
+                    "숫자가 클수록 해당 특성이 강합니다.")
+            _pr = pr.copy()
+            _pr.index = [clabel(i, k) for i in range(len(_pr))]
+            st.plotly_chart(chart_heatmap(_pr, False), use_container_width=True)
+        with h2:
+            infobox("해석 안내",
+                    "Z-score 0보다 크면 전체 평균 이상(주황), 작으면 이하(파랑). "
+                    "군집 간 상대적 차이를 파악하는 데 유용합니다.")
+            _pz = pz.copy()
+            _pz.index = [clabel(i, k) for i in range(len(_pz))]
+            st.plotly_chart(chart_heatmap(_pz, True), use_container_width=True)
             st.dataframe(
-                pz.round(2).style.background_gradient(cmap="RdYlGn", axis=None).format("{:+.2f}"),
+                _pz.rename(columns=FACTOR_LABELS).round(2)
+                   .style.background_gradient(cmap="RdYlGn", axis=None)
+                   .format("{:+.2f}"),
                 use_container_width=True,
             )
 
-    # ④ 레이더
-    with sub[3]:
-        sec("Radar Chart", "표준화 군집 프로파일 레이더 차트",
-            "4개 변수 축으로 각 군집의 특성 패턴을 한눈에 비교합니다.")
+    # ─ 레이더 ─
+    with s[3]:
+        sec("Radar", "표준화 군집 프로파일 레이더 차트",
+            "4개 변수 축으로 군집의 특성 패턴을 한눈에 비교합니다.")
         show = []
         rcols = st.columns(k)
         for i, col in enumerate(rcols):
             if i >= k: break
-            nm = CLUSTER_NAMES[i] if i < len(CLUSTER_NAMES) else f"군집{i+1}"
             with col:
-                if st.checkbox(f"C{i+1} {nm}", value=True, key=f"rc_{i}"):
+                if st.checkbox(clabel(i, k), value=True, key=f"rc_{i}"):
                     show.append(i+1)
         if show:
-            st.plotly_chart(plot_radar(profile_z, show), use_container_width=True)
+            st.plotly_chart(chart_radar(pz, show), use_container_width=True)
         else:
             st.info("하나 이상의 군집을 선택하세요.")
 
-    # ⑤ Centroid
-    with sub[4]:
-        sec("K-Means Process", "Centroid 변화 과정",
-            "알고리즘 반복에 따라 군집 중심(✕)이 이동하고 포인트 소속이 재배정됩니다. PCA로 4차원→2차원 축소.")
+    # ─ Centroid ─
+    with s[4]:
+        sec("Process", "K-평균 군집화 과정 — Centroid 변화",
+            "알고리즘 반복에 따라 군집 중심(✕)이 이동하고 소속이 재배정됩니다. "
+            "PCA로 다차원 데이터를 2차원으로 축소하여 시각화합니다.")
         infobox("알고리즘 흐름",
-                "① 랜덤 초기 중심 배정 → ② 각 점을 가장 가까운 중심에 배정 → "
-                "③ 중심 재계산 → ②~③ 반복 → ④ 변화 없으면 수렴")
+                "① 랜덤 초기 중심 배정 → "
+                "② 각 점을 가장 가까운 중심에 배정 → "
+                "③ 중심 재계산 → "
+                "②~③ 반복 → "
+                "④ 변화 없으면 수렴")
         with st.spinner("시각화 생성 중..."):
-            st.plotly_chart(plot_centroid(factor_bytes, sel_vars, k), use_container_width=True)
+            st.plotly_chart(
+                chart_centroid(fp, sel_vars, k),
+                use_container_width=True)
 
-    # ⑥ 산점도
-    with sub[5]:
-        sec("Scatter Plot", "군집 분포 산점도")
+    # ─ 산점도 ─
+    with s[5]:
+        sec("Scatter", "군집 분포 산점도")
         sp1, sp2 = st.tabs(["PCA 2차원 산점도", "변수 선택 산점도"])
         with sp1:
-            infobox("PCA 분석",
-                    "변수를 주성분 분석(PCA)으로 2차원으로 축소 후 군집 소속을 색으로 표시합니다. ✕는 군집 중심(centroid).")
-            st.plotly_chart(plot_pca(X_sc, df_res, k), use_container_width=True)
+            infobox("PCA",
+                    "선택 변수를 PCA로 2차원 축소 후 군집 소속을 색으로 표시합니다. "
+                    "✕는 군집 중심(centroid)입니다.")
+            st.plotly_chart(chart_pca(X_sc, df_res, k), use_container_width=True)
         with sp2:
-            infobox("변수 선택", "X축·Y축에 표시할 변수를 선택해 변수 간 관계와 군집 분포를 탐색합니다.")
-            var_opts = {FACTOR_LABELS[v]: v for v in sel_vars}
-            xa_col, ya_col = st.columns(2)
-            x_lbl = xa_col.selectbox("X축 변수", list(var_opts.keys()), index=0)
-            y_lbl = ya_col.selectbox("Y축 변수", list(var_opts.keys()),
-                                     index=min(1, len(var_opts)-1))
+            infobox("변수 선택",
+                    "X·Y축 변수를 직접 선택해 변수 간 관계와 군집 분포를 탐색합니다.")
+            vopts = {FACTOR_LABELS[v]: v for v in sel_vars}
+            xa, ya = st.columns(2)
+            xl = xa.selectbox("X축 변수", list(vopts.keys()), index=0)
+            yl = ya.selectbox("Y축 변수", list(vopts.keys()),
+                              index=min(1, len(vopts)-1))
             st.plotly_chart(
-                plot_scatter_var(df_res, df_factors, var_opts[x_lbl], var_opts[y_lbl], k),
-                use_container_width=True,
-            )
+                chart_scatter(df_res, df_f, vopts[xl], vopts[yl], k),
+                use_container_width=True)
 
-    # ⑦ 설문 문항
-    with sub[6]:
-        sec("Survey Items", "설문 문항 구성",
+    # ─ 설문 문항 ─
+    with s[6]:
+        sec("Survey", "설문 문항 구성",
             "모든 문항은 5점 리커트 척도(1=전혀 그렇지 않다 ~ 5=매우 그렇다)입니다.")
         for fk in FACTOR_ITEMS:
-            letter, color, bg = FACTOR_BADGE[fk]
-            label = FACTOR_LABELS[fk]
+            letter, color, bg = FACTOR_META[fk]
+            lbl   = FACTOR_LABELS[fk]
             items = FACTOR_ITEMS[fk]
             st.markdown(f"""
-            <div class="item-block">
-                <div class="item-head">
-                    <span class="item-badge" style="background:{bg};color:{color};">{letter}</span>
-                    <span class="item-head-title">{label}</span>
-                    <span class="item-head-sub">{len(items)}문항</span>
-                </div>
-            """, unsafe_allow_html=True)
+            <div class="iblock">
+              <div class="ihead" style="background:{bg};">
+                <span class="ibadge" style="background:{color}20;color:{color};">{letter}</span>
+                <span class="ihtit">{lbl}</span>
+                <span class="ihsub">{len(items)}문항</span>
+              </div>""", unsafe_allow_html=True)
             rows_html = ""
             for item in items:
                 num  = item.split(".")[0]
                 text = ".".join(item.split(".")[1:]).strip()
-                rev  = '<span class="item-rev">역채점</span>' if item == NEGATIVE_ITEM else ""
-                rows_html += (f'<div class="item-row">'
-                              f'<div class="item-num">{num}</div>'
-                              f'<div class="item-text">{text}</div>{rev}</div>')
+                rev  = '<span class="irev">역채점</span>' if item == NEGATIVE_ITEM else ""
+                rows_html += (f'<div class="irow">'
+                              f'<div class="inum">{num}</div>'
+                              f'<div class="itxt">{text}</div>{rev}</div>')
             st.markdown(rows_html + "</div><br>", unsafe_allow_html=True)
 
-    return df_res, profile_z, k
 
-
-# ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # 탭 4 : 결론
-# ══════════════════════════════════════════════════════════
-def tab_conclusion(profile_z, k):
-    # 결론 배너
+# ══════════════════════════════════════════
+def tab_conclusion(df_res, pr, pz, k):
+    # ── 결론 배너 ──
     st.markdown(f"""
-    <div class="conclusion-banner">
-        <div class="cb-num">K{k}</div>
-        <div>
-            <h3>최적 클러스터 수: K = {k}</h3>
-            <p>Elbow Method 분석 결과 K={k}에서 Inertia 감소폭이 완만해졌습니다.<br>
-            학생들은 <b>취약형 · 우수형 · 보통형</b>의 3가지 뚜렷한 유형으로 분류됩니다.</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    <div class="cbanner">
+      <div class="cbn">K{k}</div>
+      <div>
+        <div class="cbh">최적 클러스터 수: K = {k}</div>
+        <p class="cbp">
+          Elbow Method 분석 결과 K={k}에서 Inertia 감소폭이 완만해졌습니다.<br>
+          학생들은 <b>취약형 · 중간형 · 강점형</b> 3가지 유형으로 분류됩니다.
+        </p>
+      </div>
+    </div>""", unsafe_allow_html=True)
 
-    # 군집 특징 카드
-    sec("Cluster Characteristics", "군집별 특징")
+    # ── 군집별 특징 ──
+    sec("Characteristics", "군집별 특징")
     cols = st.columns(k)
     for i, col in enumerate(cols):
-        if i >= k or i >= len(profile_z): break
-        row   = profile_z.iloc[i]
-        color = CLUSTER_COLORS[i]
-        name  = CLUSTER_NAMES[i] if i < len(CLUSTER_NAMES) else f"군집{i+1}"
-        desc  = CLUSTER_DESCS[i] if i < len(CLUSTER_DESCS) else ""
+        if i >= k or i >= len(pz): break
+        row   = pz.iloc[i]
+        color = C_COLORS[i]
+        name  = C_NAMES[i] if i < len(C_NAMES) else f"군집{i+1}"
+        desc  = C_DESCS[i] if i < len(C_DESCS) else ""
+        n_cnt = int((df_res["cluster"]==i+1).sum())
         stats = "".join(
-            f'<div class="cc-stat-row">'
-            f'<span style="color:#8b95a1;">{FACTOR_LABELS.get(v,v)}</span>'
-            f'<span style="color:{color};font-weight:700;font-family:monospace;">{"+"if row[v]>0 else ""}{row[v]:.2f}σ</span>'
-            f'</div>'
-            for v in profile_z.columns
+            f'<div class="cstat">'
+            f'<span style="color:#9e9387;">{FACTOR_LABELS.get(v,v)}</span>'
+            f'<span style="color:{color};font-weight:700;font-family:monospace;">'
+            f'{"+" if row[v]>0 else ""}{row[v]:.2f}σ</span></div>'
+            for v in pz.columns
         )
         with col:
             st.markdown(f"""
-            <div class="cluster-card" style="border-top-color:{color};margin-bottom:20px;">
-                <div class="cc-label" style="color:{color};">군집 {i+1} · {name}</div>
-                <div class="cc-name">{name}</div>
-                <div class="cc-desc">{desc}</div>
-                <div class="cc-stats">{stats}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            <div class="ccard" style="border-top-color:{color};margin-bottom:18px;">
+              <div class="ccard-lbl" style="color:{color};">군집 {i+1} · {n_cnt}명</div>
+              <div class="ccard-name">{name}</div>
+              <div class="ccard-desc">{desc}</div>
+              {stats}
+            </div>""", unsafe_allow_html=True)
 
-    divider()
+    hdiv()
 
-    # 맞춤 전략
-    sec("Teaching Strategies", "군집별 맞춤형 지도 방안")
+    # ── 종합 해석 ──
+    sec("Interpretation", "종합 해석")
+    st.markdown("""
+    <div class="card" style="font-size:14px;color:#4e3d35;line-height:1.9;">
+      <p>본 분석은 <b>수학불안·자기효능감·수학흥미·학습태도</b> 4가지 하위요인을 기준으로
+      학생들을 유형화하여, 각 유형의 특징을 이해하고 맞춤형 지원 방안을 모색하는 것을 목표로 하였습니다.</p>
+      <p style="margin-top:12px;">
+        K-평균 군집화 분석을 통해 학생들을 총 <b>3가지 유형</b>으로 분류할 수 있었습니다.
+        단순히 성적만으로 학생들을 평가하기보다, 정서적·행동적 요인을 함께 고려해
+        학생을 이해해야 함을 보여 줍니다.
+      </p>
+      <p style="margin-top:12px;">
+        PCA 2차원 공간에서도 군집이 대체로 뚜렷하게 구분되어 군집화의 타당성을 뒷받침합니다.
+        이 결과는 학교 수학 수업에서 집단별 맞춤형 교수 전략을 수립하는 데 중요한 기초 자료가 됩니다.
+      </p>
+    </div>""", unsafe_allow_html=True)
+
+    hdiv()
+
+    # ── 맞춤 지도 방안 ──
+    sec("Strategies", "군집별 맞춤형 지도 방안")
     s1, s2, s3 = st.columns(3)
-    strategy_cols = [s1, s2, s3]
-    strategy_titles = ["심리적 안정 + 기초 강화", "심화 도전 + 창의성 확장", "동기 유발 + 잠재력 개발"]
-
-    for i in range(min(k, 3)):
-        color = CLUSTER_COLORS[i]
-        name  = CLUSTER_NAMES[i] if i < len(CLUSTER_NAMES) else f"군집{i+1}"
-        title = strategy_titles[i] if i < len(strategy_titles) else ""
-        items = STRATEGY_ITEMS[i] if i < len(STRATEGY_ITEMS) else []
-        li_html = "".join(f"<li>{it}</li>" for it in items)
-        with strategy_cols[i]:
+    for i, col in enumerate([s1, s2, s3]):
+        if i >= min(k, 3): break
+        color = C_COLORS[i]
+        name  = C_NAMES[i] if i < len(C_NAMES) else f"군집{i+1}"
+        strat = STRATEGIES[i] if i < len(STRATEGIES) else {"title":"","items":[]}
+        li_html = "".join(f"<li>{it}</li>" for it in strat["items"])
+        with col:
             st.markdown(f"""
-            <div class="strat-card" style="border-left-color:{color};">
-                <div class="strat-label" style="color:{color};">군집 {i+1} · {name}</div>
-                <div class="strat-title">{title}</div>
-                <ul class="strat-list">{li_html}</ul>
-            </div>
-            """, unsafe_allow_html=True)
+            <div class="stcard" style="border-left-color:{color};">
+              <div class="stlbl" style="color:{color};">군집 {i+1} · {name}</div>
+              <div class="sttit">{strat['title']}</div>
+              <ul class="stli">{li_html}</ul>
+            </div>""", unsafe_allow_html=True)
 
-    divider()
+    hdiv()
 
-    # 종합
+    # ── 시사점 ──
     infobox("종합 시사점",
             "세 군집은 성적이 아닌 <b>정서·동기·행동</b> 요인으로 분류됩니다. "
             "동일 성적대라도 군집이 다를 수 있어 유형별 맞춤 접근이 필요합니다.<br>"
-            "취약형은 <b>심리적 돌봄</b> 우선, 우수형은 <b>지적 도전</b>으로 잠재력 극대화, "
-            "보통형은 <b>내적 동기 발굴</b>이 핵심 전략입니다.")
+            "<b>취약형</b>은 심리적 돌봄 우선, "
+            "<b>중간형</b>은 동기 유발·잠재력 발굴, "
+            "<b>강점형</b>은 심화 도전 기회 제공이 핵심입니다.")
 
-    # 분석 결과 다운로드
-    divider()
+    hdiv()
+
+    # ── 다운로드 ──
     sec("Export", "분석 결과 다운로드")
-    if profile_z is not None and len(profile_z) > 0:
-        result_df = profile_z.copy()
-        result_df.index = [f"C{i+1} {CLUSTER_NAMES[i] if i < len(CLUSTER_NAMES) else ''}"
-                           for i in range(len(result_df))]
-        result_df.columns = [FACTOR_LABELS.get(c, c) for c in result_df.columns]
-        csv = result_df.round(3).to_csv(encoding="utf-8-sig")
+    c1, c2 = st.columns(2)
+    with c1:
+        _pz = pz.copy()
+        _pz.index = [clabel(i,k) for i in range(len(_pz))]
+        _pz.columns = [FACTOR_LABELS.get(c,c) for c in _pz.columns]
         st.download_button(
-            label="📥 군집 프로파일 CSV 다운로드",
-            data=csv,
-            file_name="cluster_profile_zscore.csv",
-            mime="text/csv",
+            "📥 군집 프로파일 (Z-score) CSV",
+            data=_pz.round(3).to_csv(encoding="utf-8-sig"),
+            file_name="cluster_profile_zscore.csv", mime="text/csv",
+        )
+    with c2:
+        out = df_res.rename(columns=FACTOR_LABELS)
+        st.download_button(
+            "📥 학생별 군집 배정 결과 CSV",
+            data=out.to_csv(index=False, encoding="utf-8-sig"),
+            file_name="student_cluster_result.csv", mime="text/csv",
         )
 
 
-# ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # MAIN
-# ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 def main():
-    import io
-
     # session state 초기화
-    if "show_recog" not in st.session_state:
-        st.session_state["show_recog"] = False
+    for k, v in [("show_recog", False), ("result", None),
+                 ("file_data", None), ("file_name", None)]:
+        if k not in st.session_state:
+            st.session_state[k] = v
 
     # ── 데이터 로드 ──
-    uf = st.session_state.get("uploaded_file", None)
-    if uf is not None:
-        file_bytes = uf.read()
-        uf.seek(0)
-        raw_df, df_factors, recognized, avail_vars = load_and_process(file_bytes, uf.name)
-        data_source = f"📁 {uf.name}"
+    is_demo = False
+    if st.session_state["file_data"]:
+        try:
+            raw, df_f, recognized, avail = load_file(
+                st.session_state["file_data"],
+                st.session_state["file_name"],
+            )
+        except Exception as e:
+            st.error(f"파일 처리 오류: {e}")
+            raw, df_f, recognized, avail = make_demo()
+            is_demo = True
     else:
-        # 데모 데이터
-        np.random.seed(42)
-        n = 67
-        demo = {}
-        # 군집이 뚜렷하도록 그룹별 생성
-        idx_c1 = np.arange(0, 20)   # 취약형
-        idx_c2 = np.arange(20, 45)  # 우수형
-        idx_c3 = np.arange(45, 67)  # 보통형
-        for col in FACTOR_ITEMS["math_anxiety_mean"]:
-            arr = np.zeros(n, dtype=int)
-            arr[idx_c1] = np.random.choice([4,5], len(idx_c1), p=[0.4,0.6])
-            arr[idx_c2] = np.random.choice([1,2], len(idx_c2), p=[0.5,0.5])
-            arr[idx_c3] = np.random.choice([2,3,4], len(idx_c3), p=[0.3,0.4,0.3])
-            demo[col] = arr
-        for col in FACTOR_ITEMS["math_self_efficacy_mean"]:
-            arr = np.zeros(n, dtype=int)
-            arr[idx_c1] = np.random.choice([1,2], len(idx_c1), p=[0.5,0.5])
-            arr[idx_c2] = np.random.choice([4,5], len(idx_c2), p=[0.4,0.6])
-            arr[idx_c3] = np.random.choice([2,3,4], len(idx_c3), p=[0.3,0.4,0.3])
-            demo[col] = arr
-        for col in FACTOR_ITEMS["math_interest_mean"]:
-            arr = np.zeros(n, dtype=int)
-            arr[idx_c1] = np.random.choice([1,2], len(idx_c1), p=[0.5,0.5])
-            arr[idx_c2] = np.random.choice([4,5], len(idx_c2), p=[0.4,0.6])
-            arr[idx_c3] = np.random.choice([2,3,4], len(idx_c3), p=[0.3,0.4,0.3])
-            demo[col] = arr
-        for col in FACTOR_ITEMS["learning_attitude_mean"]:
-            arr = np.zeros(n, dtype=int)
-            arr[idx_c1] = np.random.choice([1,2], len(idx_c1), p=[0.5,0.5])
-            arr[idx_c2] = np.random.choice([4,5], len(idx_c2), p=[0.4,0.6])
-            arr[idx_c3] = np.random.choice([2,3,4], len(idx_c3), p=[0.3,0.4,0.3])
-            demo[col] = arr
-        raw_df = pd.DataFrame(demo)
-        raw_df.columns = raw_df.columns.astype(str).str.strip()
-        # 데모 데이터 직접 처리
-        recognized = {}
-        df_factors = pd.DataFrame(index=raw_df.index)
-        for fk, items in FACTOR_ITEMS.items():
-            found = [c for c in items if c in raw_df.columns]
-            recognized[fk] = found
-            if found:
-                tmp = raw_df[found].copy()
-                for c in found:
-                    tmp[c] = pd.to_numeric(tmp[c], errors="coerce")
-                if fk == "learning_attitude_mean" and NEGATIVE_ITEM in tmp.columns:
-                    tmp[NEGATIVE_ITEM] = 6 - tmp[NEGATIVE_ITEM]
-                df_factors[fk] = tmp.mean(axis=1)
-            else:
-                df_factors[fk] = np.nan
-        avail_vars = [v for v in FACTOR_ITEMS if df_factors[v].notna().sum() > 0]
-        data_source = "🔵 데모 데이터 (67명)"
-        data_source = "🔵 데모 데이터 (67명)"
+        raw, df_f, recognized, avail = make_demo()
+        is_demo = True
 
-    # parquet 직렬화 (캐시 키 용도)
+    # parquet 직렬화 (캐시 키)
     buf = io.BytesIO()
-    df_factors.to_parquet(buf)
-    factor_bytes = buf.getvalue()
+    df_f.to_parquet(buf)
+    fp = buf.getvalue()
 
-    # ── 상단 상태바 ──
+    # ── 상태바 ──
+    src = "🔵 데모 데이터 (73명)" if is_demo \
+          else f"📁 {st.session_state.get('file_name','')}"
     st.markdown(
-        f'<div style="font-size:11px;color:#8b95a1;text-align:right;margin-bottom:-16px;">'
-        f'현재 데이터: <b style="color:#1b64da;">{data_source}</b></div>',
-        unsafe_allow_html=True,
-    )
+        f'<div class="statusbar">현재 데이터: '
+        f'<b style="color:#E07B54;">{src}</b></div>',
+        unsafe_allow_html=True)
 
     # ── 메인 탭 ──
     t1, t2, t3, t4 = st.tabs([
-        "🏠  소개",
-        "📋  데이터",
-        "📊  데이터분석",
-        "🎯  결론",
+        "🏠 소개",
+        "📋 데이터",
+        "📊 데이터분석 및 시각화",
+        "🎯 결론",
     ])
 
     with t1:
-        tab_intro(uf)
+        tab_intro()
 
     with t2:
-        tab_data(raw_df, df_factors, recognized, avail_vars)
+        tab_data(raw, df_f, recognized, avail, is_demo)
 
     with t3:
-        result = tab_analysis(df_factors, avail_vars, factor_bytes)
-        # 결론 탭에서 쓸 결과 저장
-        if result:
-            st.session_state["analysis_result"] = result
+        if not avail:
+            st.warning("분석 가능한 변수가 없습니다. 파일 형식을 확인해 주세요.")
+        else:
+            tab_analysis(df_f, avail, fp)
 
     with t4:
-        result = st.session_state.get("analysis_result", None)
+        result = st.session_state.get("result")
         if result:
-            df_res, profile_z, k = result
-            tab_conclusion(profile_z, k)
+            df_res, pr, pz, k = result
+            tab_conclusion(df_res, pr, pz, k)
         else:
-            st.info("먼저 '데이터분석' 탭에서 분석을 실행하세요.")
-            st.markdown("""
-            <div class="info-box">
-                <div class="ib-label">안내</div>
-                <p>① <b>소개</b> 탭에서 파일을 업로드하고<br>
-                ② <b>데이터</b> 탭에서 문항 인식 결과를 확인한 후<br>
-                ③ <b>데이터분석</b> 탭으로 이동하면 결론이 자동으로 여기에 표시됩니다.</p>
-            </div>
-            """, unsafe_allow_html=True)
+            infobox("이용 순서",
+                    "① <b>소개</b> 탭에서 파일 업로드 → "
+                    "② <b>데이터</b> 탭에서 문항 인식 확인 → "
+                    "③ <b>데이터분석 및 시각화</b> 탭 클릭(자동 실행) → "
+                    "④ <b>결론</b> 탭에서 최종 결과 확인")
+            st.info("먼저 '데이터분석 및 시각화' 탭을 열어 분석을 실행하면 결론이 표시됩니다.")
 
 
 if __name__ == "__main__":
     main()
-import streamlit as st
-
-st.title("🎈 My new app")
-st.write(
-    "Let's start building! For help and inspiration, head over to [docs.streamlit.io](https://docs.streamlit.io/)."
-)
