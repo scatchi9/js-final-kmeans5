@@ -500,16 +500,15 @@ def chart_heatmap(profile: pd.DataFrame, is_z: bool):
             ))
     fig = go.Figure(go.Heatmap(
         z=z, x=xl, y=yl, colorscale=cs, showscale=True, hoverongaps=False,
-    ))
-    fig.update_traces(
         colorbar=dict(thickness=11, len=0.8),
-        annotations=anns,
-    )
+    ))
     fig.update_layout(
-        **dict(plot_bgcolor="#fff", paper_bgcolor="#fff",
-               font=PLOT_FONT, margin=dict(t=46,b=12,l=110,r=65)),
+        plot_bgcolor="#fff", paper_bgcolor="#fff",
+        font=PLOT_FONT,
+        margin=dict(t=46, b=12, l=110, r=65),
         xaxis=dict(side="top"),
-        height=190 + len(profile)*32,
+        height=190 + len(profile) * 32,
+        annotations=anns,
     )
     return fig
 
