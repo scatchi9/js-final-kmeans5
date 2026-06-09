@@ -9,10 +9,12 @@ K-평균 군집화를 활용한 수학 학습자 유형 분석 Streamlit 앱
 
 from __future__ import annotations
 
+import base64
 import io
 import re
 import textwrap
 import zipfile
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
 
@@ -869,6 +871,168 @@ def report_markdown(res: AnalysisResult) -> str:
     return "\n".join(lines)
 
 
+
+
+# ─────────────────────────────────────────────────────────────
+# K 탐색 결과 리포트 화면
+# ─────────────────────────────────────────────────────────────
+def display_pdf_file(pdf_path: str, height: int = 640):
+    # Streamlit 화면 안에 PDF를 표시합니다. PDF 파일은 app.py와 같은 폴더에 있어야 합니다.
+    path = Path(pdf_path)
+    if not path.exists():
+        st.info("원본 PDF 파일을 찾을 수 없습니다. 앱 폴더에 PDF 파일을 함께 넣으면 원본 리포트를 볼 수 있습니다.")
+        return
+    with open(path, "rb") as f:
+        base64_pdf = base64.b64encode(f.read()).decode("utf-8")
+    pdf_display = f"""
+    <iframe
+        src="data:application/pdf;base64,{base64_pdf}"
+        width="100%"
+        height="{height}"
+        style="border:1px solid #e8eaed; border-radius:14px; background:#fff;"
+        type="application/pdf">
+    </iframe>
+    """
+    st.markdown(pdf_display, unsafe_allow_html=True)
+
+
+def render_k_exploration_result_tab():
+    # 업로드한 PDF 내용을 웹앱 탭 안에서 요약·표·원본 PDF로 보여줍니다.
+    section(
+        "K Exploration Result",
+        "변수 선택이 학생 군집화에 미치는 영향",
+        "변수 조합에 따라 최적 K는 달라지지만, 수업 적용 관점에서는 4개 변수를 모두 포함한 K=2 모델이 가장 실용적입니다.",
+    )
+
+    st.markdown(
+        """
+<div class="callout">
+  <b>핵심 결론</b><br>
+  수학불안, 자기효능감, 수학흥미, 학습태도를 모두 포함하면 <b>K=2</b>가 가장 안정적입니다.
+  학생의 마음은 다양하지만, 수업 지원 관점에서는 두 집단으로 보는 것이 가장 실용적입니다.
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(
+            '<div class="factor-card"><b>종합성</b><br><span style="color:#4e5968;font-size:13px">4개 변수가 학생의 정서·동기·행동을 함께 반영합니다.</span></div>',
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            '<div class="factor-card"><b>해석 가능성</b><br><span style="color:#4e5968;font-size:13px">K=2는 결과가 단순하여 학생 유형 해석이 쉽습니다.</span></div>',
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            '<div class="factor-card"><b>수업 적용성</b><br><span style="color:#4e5968;font-size:13px">두 집단으로 나누면 맞춤형 지원 전략으로 바로 연결할 수 있습니다.</span></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.subheader("학생을 이해하는 4가지 렌즈")
+    lens_df = pd.DataFrame(
+        [
+            {"구분": "내면의 마음 상태", "변수": "수학불안", "의미": "수학 상황에서 느끼는 긴장과 걱정"},
+            {"구분": "내면의 마음 상태", "변수": "자기효능감", "의미": "수학을 해낼 수 있다는 자신감"},
+            {"구분": "내면의 마음 상태", "변수": "수학흥미", "의미": "수학에 대한 흥미와 참여 의지"},
+            {"구분": "실제적 참여", "변수": "학습태도", "의미": "계획, 성실성, 질문, 집중 등 학습 행동"},
+        ]
+    )
+    st.dataframe(lens_df, use_container_width=True, hide_index=True)
+    st.caption("정서·동기 변수는 학생의 마음 상태를, 학습태도는 실제 수업 참여를 보여줍니다.")
+
+    st.subheader("변수 조합별 최적 K값")
+    combo_df = pd.DataFrame(
+        [
+            {"조합": "수학불안 + 자기효능감 + 수학흥미 + 학습태도", "추천 K": 2, "해석": "가장 종합적이고 안정적인 구분"},
+            {"조합": "수학불안 + 자기효능감", "추천 K": 8, "해석": "학생 차이가 매우 세분화되어 나타남"},
+            {"조합": "수학불안 + 자기효능감 + 수학흥미", "추천 K": 7, "해석": "정서·동기 차이가 복잡하게 나타남"},
+            {"조합": "수학불안 + 수학흥미", "추천 K": 6, "해석": "불안과 흥미 조합에 다양한 유형 존재"},
+            {"조합": "수학불안 + 학습태도", "추천 K": 6, "해석": "불안과 실제 학습행동의 조합이 다양함"},
+            {"조합": "수학불안 + 자기효능감 + 학습태도", "추천 K": 2, "해석": "학습 지원 관점에서 안정적 구분"},
+            {"조합": "수학불안 + 수학흥미 + 학습태도", "추천 K": 2, "해석": "학습 참여 관점에서 안정적 구분"},
+        ]
+    )
+    st.dataframe(combo_df, use_container_width=True, hide_index=True)
+    st.caption("정서·동기 변수만 사용하면 K가 커지고, 학습태도를 포함하면 K=2로 안정되는 경향이 나타납니다.")
+
+    fig = px.bar(
+        combo_df,
+        x="추천 K",
+        y="조합",
+        orientation="h",
+        text="추천 K",
+        title="변수 조합별 추천 K값",
+        labels={"추천 K": "추천 K", "조합": "변수 조합"},
+    )
+    fig.update_traces(textposition="outside")
+    fig.update_layout(
+        height=430,
+        template="plotly_white",
+        margin=dict(l=20, r=30, t=60, b=30),
+        yaxis={"categoryorder": "array", "categoryarray": combo_df["조합"].tolist()[::-1]},
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("K값이 클수록 학생 유형이 세분화됩니다. 하지만 수업 전략으로 쓰기에는 단순하고 안정적인 K=2가 더 적합합니다.")
+
+    st.subheader("데이터를 관통하는 핵심 패턴")
+    st.markdown(
+        """
+<div class="soft-card">
+  <div class="card-title">마음 상태 + 학습태도 = K의 안정화</div>
+  <div class="card-text">
+    수학불안·자기효능감·흥미만 보면 학생 차이가 복잡하게 나뉩니다.<br>
+    그러나 학습태도를 함께 고려하면 학생 집단은 <b>수업에 비교적 잘 참여하는 집단</b>과 <b>수학불안이 높고 지원이 필요한 집단</b>으로 안정적으로 정리됩니다.
+  </div>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.subheader("K=2의 수업적 의미")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(
+            """
+<div class="cluster-card">
+  <div class="cluster-stripe" style="background:#0d9e75"></div>
+  <div class="cluster-name">수업에 비교적 잘 참여하는 집단</div>
+  <div class="cluster-sub">수학에 안정적으로 참여하며, 현재의 학습 패턴을 유지할 수 있는 그룹입니다.</div>
+  <span class="badge badge-green">유지·확장 지원</span>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with col2:
+        st.markdown(
+            """
+<div class="cluster-card">
+  <div class="cluster-stripe" style="background:#e03131"></div>
+  <div class="cluster-name">수학불안이 높고 지원이 필요한 집단</div>
+  <div class="cluster-sub">심리적 불안을 낮추고, 교사의 적극적 개입과 맞춤형 지지가 필요한 그룹입니다.</div>
+  <span class="badge badge-red">우선 지원 필요</span>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        """
+<div class="callout">
+  <b>최종 제언</b><br>
+  해석 가능성과 수업 적용 가능성을 고려하여, 4개 변수 전체를 포함한 <b>K=2 군집 모델</b>을 권장합니다.
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("원본 PDF 리포트 보기", expanded=False):
+        display_pdf_file("Student_Clustering_via_Variable_Selection.pdf")
+
+
 # ─────────────────────────────────────────────────────────────
 # Sidebar
 # ─────────────────────────────────────────────────────────────
@@ -950,8 +1114,9 @@ tabs = st.tabs([
     "① 연구 개요·데이터",
     "② 문항·전처리",
     "③ K 탐색",
-    "④ 군집 시각화",
-    "⑤ 결론·지도 방안",
+    "④ K탐색 결과",
+    "⑤ 군집 시각화",
+    "⑥ 결론·지도 방안",
 ])
 
 # ── Tab 1
@@ -1046,14 +1211,27 @@ with tabs[2]:
     with c2:
         st.plotly_chart(fig_silhouette(res), use_container_width=True)
 
+    if not res.silhouette_df.empty:
+        st.subheader("실루엣 점수 표")
+        sil_table = res.silhouette_df.copy()
+        sil_table["Silhouette"] = sil_table["Silhouette"].round(3)
+        st.dataframe(
+            sil_table.rename(columns={"K": "군집 수 K", "Silhouette": "실루엣 점수"}),
+            use_container_width=True,
+            hide_index=True,
+        )
+
     if res.k_recommended:
+        best_row = res.silhouette_df.loc[res.silhouette_df["Silhouette"].idxmax()]
+        best_k = int(best_row["K"])
+        best_score = float(best_row["Silhouette"])
         st.markdown(
             f"""
 <div class="callout">
   <b>보고서 문장 예시</b><br>
-  Elbow 그래프만으로는 최적 K가 다소 모호할 수 있으므로 실루엣 점수를 함께 확인하였다.
-  본 데이터에서는 실루엣 점수 기준 <b>K={res.k_recommended}</b>가 가장 적절한 후보로 나타났으며,
-  최종 분석에서는 <b>K={res.k}</b>개의 군집으로 학생 유형을 해석하였다.
+  실루엣 점수 표를 보면, <b>K={best_k}</b>일 때 실루엣 점수가 <b>{best_score:.3f}</b>로 가장 높게 나타났습니다.
+  이는 군집의 응집도와 분리도가 가장 이상적인 K 값으로 <b>K={best_k}</b>를 추천한다는 의미입니다.
+  즉, <b>{best_k}</b>개의 군집으로 분류하는 것이 데이터의 특성을 가장 잘 반영한다고 해석할 수 있습니다.
 </div>
             """,
             unsafe_allow_html=True,
@@ -1061,6 +1239,10 @@ with tabs[2]:
 
 # ── Tab 4
 with tabs[3]:
+    render_k_exploration_result_tab()
+
+# ── Tab 5
+with tabs[4]:
     section(
         "Cluster Visualization",
         "군집 프로파일을 여러 시각 요소로 확인",
@@ -1068,27 +1250,35 @@ with tabs[3]:
     )
 
     st.plotly_chart(fig_cluster_counts(res), use_container_width=True)
+    st.caption("군집별 학생 수를 비교합니다. 특정 군집의 인원이 많다면 그 유형에 맞는 수업 지원을 우선적으로 설계할 필요가 있습니다.")
 
     c1, c2 = st.columns(2)
     with c1:
         st.plotly_chart(fig_heatmap(res.profile_raw, "원점수 평균 히트맵", zscore=False), use_container_width=True)
+        st.caption("각 군집의 실제 5점 척도 평균을 보여줍니다. 학생들이 설문에서 실제로 어느 정도 점수를 보였는지 직관적으로 확인할 수 있습니다.")
     with c2:
         st.plotly_chart(fig_heatmap(res.profile_scaled, "표준화 평균 히트맵", zscore=True), use_container_width=True)
+        st.caption("전체 평균을 0으로 두고 군집별 상대적 차이를 보여줍니다. +값은 평균보다 높고, -값은 평균보다 낮다는 뜻입니다.")
 
     st.plotly_chart(fig_radar(res), use_container_width=True)
+    st.caption("군집별 표준화 평균을 한눈에 비교하는 차트입니다. 선이 바깥쪽으로 갈수록 해당 요인이 평균보다 높고, 안쪽으로 갈수록 평균보다 낮습니다.")
+
     st.plotly_chart(fig_pca(res), use_container_width=True)
+    st.caption("여러 설문 요인을 2차원 평면으로 줄여 학생들의 분포를 보여줍니다. 가까이 모인 점들은 응답 패턴이 비슷하고, 멀리 떨어진 점들은 응답 특성이 다르다고 볼 수 있습니다.")
 
     reg_fig = fig_anxiety_attitude(res)
     if reg_fig:
         st.plotly_chart(reg_fig, use_container_width=True)
+        st.caption("수학불안이 높아질수록 학습태도가 어떻게 달라지는지 살펴보는 산점도입니다. 추세선이 아래로 향하면 불안이 높을수록 학습태도가 낮아지는 경향이 있음을 의미합니다.")
 
     st.subheader("K-평균 군집화 과정: Centroid 변화")
     st.caption("PCA 2차원 공간에서 군집 중심이 이동하고 학생 점들이 다시 배정되는 과정을 단계별로 보여줍니다.")
     step = st.slider("Centroid 변화 단계", 0, 5, 2)
     st.plotly_chart(fig_centroid_step(res, step), use_container_width=True)
+    st.caption("K-평균 군집화는 임의의 중심점에서 출발해, 학생들을 가까운 중심에 배정하고 중심을 다시 계산하는 과정을 반복합니다. 중심점이 거의 움직이지 않으면 최종 군집이 결정됩니다.")
 
-# ── Tab 5
-with tabs[4]:
+# ── Tab 6
+with tabs[5]:
     section(
         "Conclusion & Teaching Strategies",
         "군집별 특징과 맞춤형 지도 방안",
