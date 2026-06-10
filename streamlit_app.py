@@ -32,9 +32,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 
-APP_DIR = Path(__file__).resolve().parent
-
-
 # ─────────────────────────────────────────────────────────────
 # Page config
 # ─────────────────────────────────────────────────────────────
@@ -955,7 +952,7 @@ def report_markdown(res: AnalysisResult) -> str:
 # ─────────────────────────────────────────────────────────────
 def display_pdf_file(pdf_path: str, height: int = 640):
     # Streamlit 화면 안에 PDF를 표시합니다. PDF 파일은 app.py와 같은 폴더에 있어야 합니다.
-    path = APP_DIR / pdf_path
+    path = Path(pdf_path)
     if not path.exists():
         st.info("원본 PDF 파일을 찾을 수 없습니다. 앱 폴더에 PDF 파일을 함께 넣으면 원본 리포트를 볼 수 있습니다.")
         return
@@ -973,49 +970,24 @@ def display_pdf_file(pdf_path: str, height: int = 640):
     st.markdown(pdf_display, unsafe_allow_html=True)
 
 
-def display_k_result_slide_images(slide_dir: str = "assets/k_exploration_slides"):
-    # PowerPoint 결과 슬라이드를 PNG로 변환한 이미지를 그대로 표시합니다.
-    path = APP_DIR / slide_dir
-    slides = [p for p in sorted(path.glob("slide-*.png")) if p.stat().st_size > 50_000]
-    if not slides:
-        st.info("PowerPoint 슬라이드 이미지를 찾을 수 없습니다. assets/k_exploration_slides 폴더를 확인해 주세요.")
-        return
-
-    st.markdown(
-        """
-<div class="callout">
-  <b>PowerPoint 결과 원본</b><br>
-  아래 화면은 업로드한 발표용 PowerPoint를 이미지로 변환하여 그대로 표시한 것입니다.
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    for i, slide in enumerate(slides, start=1):
-        st.image(str(slide), caption=f"K탐색 결과 슬라이드 {i}", use_container_width=True)
-
-
 def render_k_exploration_result_tab():
     # 업로드한 PDF 내용을 웹앱 탭 안에서 요약·표·원본 PDF로 보여줍니다.
     section(
         "K Exploration Result",
         "변수 선택이 학생 군집화에 미치는 영향",
-        "PowerPoint 결과 슬라이드를 이미지로 그대로 보여주고, 아래에서 핵심 해석을 요약합니다.",
+        "변수 조합에 따라 최적 K는 달라지지만, 수업 적용 관점에서는 4개 변수를 모두 포함한 K=2 모델이 가장 실용적입니다.",
     )
 
-    display_k_result_slide_images()
-
-    with st.expander("텍스트 요약 보기", expanded=False):
-        st.markdown(
-            """
+    st.markdown(
+        """
 <div class="callout">
   <b>핵심 결론</b><br>
   수학불안, 자기효능감, 수학흥미, 학습태도를 모두 포함하면 <b>K=2</b>가 가장 안정적입니다.
   학생의 마음은 다양하지만, 수업 지원 관점에서는 두 집단으로 보는 것이 가장 실용적입니다.
 </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        """,
+        unsafe_allow_html=True,
+    )
 
     c1, c2, c3 = st.columns(3)
     with c1:
