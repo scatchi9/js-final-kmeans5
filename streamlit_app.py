@@ -32,6 +32,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 
+APP_DIR = Path(__file__).resolve().parent
+
+
 # ─────────────────────────────────────────────────────────────
 # Page config
 # ─────────────────────────────────────────────────────────────
@@ -48,128 +51,160 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
-
 :root {
-  --bg:#f7f8fa;
+  --bg:#f4f5f7;
   --white:#ffffff;
-  --border:#e8eaed;
-  --text:#191f28;
-  --text2:#4e5968;
-  --text3:#8b95a1;
-  --blue:#1b64da;
-  --blue-bg:#eef3fd;
-  --red:#e03131;
-  --red-bg:#fff0f0;
-  --green:#0d9e75;
-  --green-bg:#e6f7f1;
-  --amber:#c47d0e;
-  --amber-bg:#fff8e6;
-  --purple:#6343c8;
-  --purple-bg:#f0edfc;
+  --ink:#111827;
+  --ink2:#374151;
+  --muted:#6b7280;
+  --line:#e5e7eb;
+  --black:#0b0f19;
+  --red:#e11d48;
+  --red-soft:#fff1f2;
+  --blue:#2563eb;
+  --blue-soft:#eff6ff;
+  --green:#059669;
+  --green-soft:#ecfdf5;
+  --amber:#d97706;
+  --amber-soft:#fffbeb;
+  --purple:#7c3aed;
+  --purple-soft:#f5f3ff;
+  --shadow:0 24px 60px rgba(15,23,42,.08);
 }
 html, body, [class*="css"] {
-  font-family: 'Noto Sans KR', sans-serif;
+  font-family: Helvetica, "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  color: var(--ink);
 }
+body, .stApp { background: var(--bg); }
 .block-container {
-  padding-top: 1.2rem;
-  max-width: 1180px;
+  padding-top: 1.1rem;
+  padding-bottom: 3rem;
+  max-width: 1200px;
 }
 .report-header {
-  background: #ffffff;
-  border: 1px solid #e8eaed;
-  border-radius: 18px;
-  padding: 30px 34px 26px 34px;
-  margin-bottom: 18px;
-  box-shadow: 0 8px 26px rgba(25,31,40,0.035);
+  position: relative;
+  overflow: hidden;
+  min-height: 260px;
+  background:
+    radial-gradient(circle at 78% 18%, rgba(225,29,72,.28), transparent 30%),
+    linear-gradient(135deg, #0b0f19 0%, #141b2d 50%, #20293c 100%);
+  border: 0;
+  border-radius: 30px;
+  padding: 42px 46px;
+  margin-bottom: 22px;
+  box-shadow: var(--shadow);
+}
+.report-header::after {
+  content: "K";
+  position: absolute;
+  right: 42px;
+  bottom: -78px;
+  font-size: 300px;
+  line-height: .8;
+  font-weight: 900;
+  color: rgba(255,255,255,.08);
+  letter-spacing: -18px;
 }
 .kicker {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.10);
+  color: #f8fafc;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: #1b64da;
-  margin-bottom: 8px;
-}
-.report-title {
-  font-size: 30px;
   font-weight: 800;
-  color: #191f28;
-  letter-spacing: -0.5px;
-  margin-bottom: 6px;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+.kicker::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--red); }
+.report-title {
+  max-width: 760px;
+  font-size: clamp(34px, 4.5vw, 58px);
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: -2.4px;
+  line-height: 1.06;
+  margin-bottom: 14px;
 }
 .report-subtitle {
-  font-size: 15px;
-  color: #4e5968;
+  max-width: 760px;
+  font-size: 16px;
+  color: rgba(255,255,255,.76);
   line-height: 1.75;
 }
 .meta-wrap {
   display:flex;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 20px;
+  margin-top: 26px;
+  position:relative;
+  z-index:1;
 }
 .meta-chip {
   display:inline-flex;
   align-items:center;
-  gap: 7px;
-  background:#f7f8fa;
-  border:1px solid #e8eaed;
+  gap: 8px;
+  background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.16);
   border-radius:999px;
-  padding:6px 13px;
-  color:#4e5968;
+  padding:8px 13px;
+  color:#f8fafc;
   font-size:12px;
+  backdrop-filter: blur(8px);
 }
 .dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.soft-card, .factor-card, .cluster-card {
+  background: rgba(255,255,255,.96);
+  border: 1px solid rgba(229,231,235,.95);
+  border-radius: 24px;
+  box-shadow: 0 14px 34px rgba(15,23,42,.055);
+}
 .soft-card {
-  background:#fff;
-  border:1px solid #e8eaed;
-  border-radius:16px;
-  padding:20px 22px;
-  margin-bottom: 16px;
-  box-shadow:0 6px 18px rgba(25,31,40,0.025);
+  padding: 26px 28px;
+  margin-bottom: 18px;
 }
 .small-label {
-  font-size:11px;
-  font-weight:700;
-  letter-spacing:1.8px;
-  color:#1b64da;
-  text-transform:uppercase;
-  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--red);
+  text-transform: uppercase;
+  margin-bottom: 10px;
 }
 .card-title {
-  font-size:18px;
-  font-weight:800;
-  color:#191f28;
-  margin-bottom:8px;
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--ink);
+  letter-spacing: -0.9px;
+  line-height: 1.22;
+  margin-bottom: 8px;
 }
 .card-text {
-  font-size:14px;
-  color:#4e5968;
-  line-height:1.75;
+  font-size: 15px;
+  color: var(--ink2);
+  line-height: 1.75;
 }
 .factor-card {
-  border:1px solid #e8eaed;
-  border-radius:14px;
-  padding:18px;
-  background:#fff;
+  padding:22px;
   height:100%;
+  transition: transform .15s ease, box-shadow .15s ease;
 }
+.factor-card:hover { transform: translateY(-2px); box-shadow: 0 20px 42px rgba(15,23,42,.09); }
 .factor-icon {
-  width:36px;
-  height:36px;
-  border-radius:10px;
+  width:44px;
+  height:44px;
+  border-radius:14px;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-weight:800;
-  margin-bottom:10px;
+  font-weight:900;
+  margin-bottom:14px;
 }
 .cluster-card {
-  background:#fff;
-  border:1px solid #e8eaed;
-  border-radius:16px;
-  padding:20px;
+  padding:24px;
   height:100%;
   position:relative;
   overflow:hidden;
@@ -179,73 +214,115 @@ html, body, [class*="css"] {
   top:0;
   left:0;
   right:0;
-  height:5px;
+  height:6px;
 }
 .cluster-name {
-  font-size:20px;
-  font-weight:800;
-  margin:10px 0 4px 0;
+  font-size:28px;
+  font-weight:900;
+  letter-spacing:-1.1px;
+  margin:12px 0 6px 0;
 }
 .cluster-sub {
-  font-size:13px;
-  color:#4e5968;
+  font-size:14px;
+  color:var(--ink2);
   line-height:1.65;
-  margin-bottom:10px;
+  margin-bottom:14px;
 }
 .badge {
   display:inline-block;
   border-radius:999px;
-  padding:4px 10px;
-  font-size:11px;
-  font-weight:700;
-  margin: 2px 4px 2px 0;
+  padding:6px 11px;
+  font-size:12px;
+  font-weight:800;
+  margin: 3px 4px 3px 0;
 }
-.badge-red { background:#fff0f0; color:#e03131; }
-.badge-green { background:#e6f7f1; color:#0d9e75; }
-.badge-amber { background:#fff8e6; color:#c47d0e; }
-.badge-blue { background:#eef3fd; color:#1b64da; }
-.callout {
-  border-left:4px solid #1b64da;
-  background:#eef3fd;
-  border-radius:0 12px 12px 0;
-  padding:14px 18px;
-  color:#4e5968;
+.badge-red { background:var(--red-soft); color:var(--red); }
+.badge-green { background:var(--green-soft); color:var(--green); }
+.badge-amber { background:var(--amber-soft); color:var(--amber); }
+.badge-blue { background:var(--blue-soft); color:var(--blue); }
+.callout, .warning-callout {
+  border:0;
+  border-radius:24px;
+  padding:20px 24px;
   line-height:1.75;
-  margin:12px 0 18px 0;
+  margin:14px 0 20px 0;
+  box-shadow: 0 12px 30px rgba(15,23,42,.05);
+}
+.callout {
+  background:linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+  color:var(--ink2);
+  border-left:6px solid var(--blue);
 }
 .warning-callout {
-  border-left:4px solid #c47d0e;
-  background:#fff8e6;
-  border-radius:0 12px 12px 0;
-  padding:14px 18px;
-  color:#4e5968;
-  line-height:1.75;
-  margin:12px 0 18px 0;
+  background:linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+  color:var(--ink2);
+  border-left:6px solid var(--amber);
+}
+.slide-hero {
+  background:#0b0f19;
+  color:#fff;
+  border-radius:30px;
+  padding:40px;
+  margin:18px 0;
+  box-shadow:var(--shadow);
+}
+.slide-hero h2 { font-size:44px; line-height:1.08; letter-spacing:-1.8px; margin:0 0 12px 0; }
+.slide-hero p { color:rgba(255,255,255,.76); font-size:16px; line-height:1.7; margin:0; }
+.slide-number {
+  font-size:72px;
+  font-weight:900;
+  letter-spacing:-3px;
+  color:var(--red);
+}
+.slide-note {
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:18px 20px;
+  font-size:14px;
+  color:var(--muted);
+  line-height:1.65;
+  box-shadow:0 10px 24px rgba(15,23,42,.04);
 }
 .stTabs [data-baseweb="tab-list"] {
-  gap: 6px;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px;
+  box-shadow: 0 10px 30px rgba(15,23,42,.04);
 }
 .stTabs [data-baseweb="tab"] {
   border-radius: 999px;
-  padding: 10px 18px;
-  background: #ffffff;
-  border: 1px solid #e8eaed;
+  padding: 11px 16px;
+  background: transparent;
+  border: 0;
+  font-weight: 800;
+  color: var(--muted);
 }
 .stTabs [aria-selected="true"] {
-  background:#eef3fd !important;
-  color:#1b64da !important;
-  border:1px solid #dbe8fb !important;
+  background:#0b0f19 !important;
+  color:#ffffff !important;
+  border:0 !important;
 }
 div[data-testid="stMetric"] {
   background: #ffffff;
-  border: 1px solid #e8eaed;
-  border-radius: 14px;
-  padding: 14px 16px;
-  box-shadow:0 4px 14px rgba(25,31,40,0.025);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 18px 18px;
+  box-shadow:0 14px 34px rgba(15,23,42,.055);
 }
-hr {
-  margin: 1.3rem 0;
+div[data-testid="stMetric"] label { color:var(--muted); font-weight:800; }
+div[data-testid="stMetricValue"] { font-weight:900; letter-spacing:-.7px; }
+.stDataFrame, div[data-testid="stPlotlyChart"] {
+  border-radius: 22px;
+  overflow:hidden;
 }
+section[data-testid="stSidebar"] {
+  background:#ffffff;
+  border-right:1px solid var(--line);
+}
+hr { margin: 1.3rem 0; border-color:var(--line); }
 </style>
     """,
     unsafe_allow_html=True,
@@ -878,7 +955,7 @@ def report_markdown(res: AnalysisResult) -> str:
 # ─────────────────────────────────────────────────────────────
 def display_pdf_file(pdf_path: str, height: int = 640):
     # Streamlit 화면 안에 PDF를 표시합니다. PDF 파일은 app.py와 같은 폴더에 있어야 합니다.
-    path = Path(pdf_path)
+    path = APP_DIR / pdf_path
     if not path.exists():
         st.info("원본 PDF 파일을 찾을 수 없습니다. 앱 폴더에 PDF 파일을 함께 넣으면 원본 리포트를 볼 수 있습니다.")
         return
@@ -896,24 +973,49 @@ def display_pdf_file(pdf_path: str, height: int = 640):
     st.markdown(pdf_display, unsafe_allow_html=True)
 
 
+def display_k_result_slide_images(slide_dir: str = "assets/k_exploration_slides"):
+    # PowerPoint 결과 슬라이드를 PNG로 변환한 이미지를 그대로 표시합니다.
+    path = APP_DIR / slide_dir
+    slides = [p for p in sorted(path.glob("slide-*.png")) if p.stat().st_size > 50_000]
+    if not slides:
+        st.info("PowerPoint 슬라이드 이미지를 찾을 수 없습니다. assets/k_exploration_slides 폴더를 확인해 주세요.")
+        return
+
+    st.markdown(
+        """
+<div class="callout">
+  <b>PowerPoint 결과 원본</b><br>
+  아래 화면은 업로드한 발표용 PowerPoint를 이미지로 변환하여 그대로 표시한 것입니다.
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    for i, slide in enumerate(slides, start=1):
+        st.image(str(slide), caption=f"K탐색 결과 슬라이드 {i}", use_container_width=True)
+
+
 def render_k_exploration_result_tab():
     # 업로드한 PDF 내용을 웹앱 탭 안에서 요약·표·원본 PDF로 보여줍니다.
     section(
         "K Exploration Result",
         "변수 선택이 학생 군집화에 미치는 영향",
-        "변수 조합에 따라 최적 K는 달라지지만, 수업 적용 관점에서는 4개 변수를 모두 포함한 K=2 모델이 가장 실용적입니다.",
+        "PowerPoint 결과 슬라이드를 이미지로 그대로 보여주고, 아래에서 핵심 해석을 요약합니다.",
     )
 
-    st.markdown(
-        """
+    display_k_result_slide_images()
+
+    with st.expander("텍스트 요약 보기", expanded=False):
+        st.markdown(
+            """
 <div class="callout">
   <b>핵심 결론</b><br>
   수학불안, 자기효능감, 수학흥미, 학습태도를 모두 포함하면 <b>K=2</b>가 가장 안정적입니다.
   학생의 마음은 다양하지만, 수업 지원 관점에서는 두 집단으로 보는 것이 가장 실용적입니다.
 </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
     c1, c2, c3 = st.columns(3)
     with c1:
