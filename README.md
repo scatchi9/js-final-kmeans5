@@ -35,9 +35,3 @@ streamlit run app.py
 - Helvetica / Helvetica Neue 기반의 모던 슬라이드형 UI 적용
 - 다크 히어로 헤더, 라운드 카드, 발표용 탭 디자인 적용
 - K탐색 결과 메뉴를 슬라이드형 요약 화면으로 구성
-
-## v6 변경 사항
-
-- `K탐색 결과` 메뉴에 PowerPoint 발표 결과 슬라이드 이미지를 그대로 표시하도록 추가했습니다.
-- 슬라이드 이미지는 `assets/k_exploration_slides/` 폴더에 포함되어 있습니다.
-- 빈 슬라이드는 앱에서 자동으로 제외됩니다.
